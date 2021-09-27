@@ -32,6 +32,20 @@ A short description of your project
 ```
 
 
+## Source code
+
+01_model_5fold_monthly.R runs each model using all monthly data from a year.
+01_model_5fold_monthly_sep.R runs each model separately using data from every month.
+
+--- the following neeeds to be rerun because i reran the first two scripts for SLR!
+01_output_prediction_test_cv.R combines the validation dataset into one csv file.
+02_vis_5fold.R visualizes the 5-fold CV results (for both models for each month and models for all 12 months).
+02_vis_5fold.Rmd visualizes the 5-fold CV results (for both models for each month and models for all 12 months).
+### Function code
+00_fun_reaed_monthly_data_gee.R contains the 'read_data' function that reads monthly predictors for each pollutant and year(s).
+fun_output_rf.R outputs RF predictions and variable importance as csv files.
+fun_rf_rf.R trains RF models.
+
 ## License
 
 This project is licensed under the terms of the [MIT License](/LICENSE.md)

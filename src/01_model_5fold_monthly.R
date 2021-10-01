@@ -34,28 +34,29 @@ if(nrow(df_sub)>200){
    # clusterExport(cl, "nfold", envir = .GlobalEnv)
    # clusterExport(cl, "years", envir = .GlobalEnv)
    # clusterExport(cl, "yr_i", envir = .GlobalEnv)
-   if(!file.exists(paste0('data/workingData/RF_vi_', csv_name, '_fold_1', '.csv'))){
+   
+   
+   # data_all <- create_fold(df_sub, seed, strt_group=c("sta_type", "zoneID"), 
+   #                         nfold = nfold)
+   
+   data_all <- create_fold(df_sub, seed, strt_group=c("n_obs", "sta_type", "zoneID"), 
+                           multiyear_group = c("sta_code", "month"),
+                           nfold = 5, m_var='month')
+   
+   cluster_no <- 5
+   cl <- parallel::makeCluster(cluster_no)
+   doParallel::registerDoParallel(cl)
+   foreach(fold_i=1:nfold)%dopar%{
+      source("../EXPANSE_algorithm/scr/fun_call_lib.R")
+      csv_name_fold <- paste0(csv_name, "_fold_", fold_i)
       
-      # data_all <- create_fold(df_sub, seed, strt_group=c("sta_type", "zoneID"), 
-      #                         nfold = nfold)
+      #f# SLR: select predictors
+      test_sub <- data_all[data_all$nfold==fold_i,]
+      train_sub <- data_all[-test_sub$index, ] #data_all$index starts from 1 to the length.
       
-      data_all <- create_fold(df_sub, seed, strt_group=c("n_obs", "sta_type", "zoneID"), 
-                              multiyear_group = c("sta_code", "month"),
-                              nfold = 5, m_var='month')
-      
-      cluster_no <- 5
-      cl <- parallel::makeCluster(cluster_no)
-      doParallel::registerDoParallel(cl)
-      foreach(fold_i=1:nfold)%dopar%{
-         source("../EXPANSE_algorithm/scr/fun_call_lib.R")
-         csv_name_fold <- paste0(csv_name, "_fold_", fold_i)
-         
-         #f# SLR: select predictors
-         test_sub <- data_all[data_all$nfold==fold_i,]
-         train_sub <- data_all[-test_sub$index, ] #data_all$index starts from 1 to the length.
-         
-         #------------------Above code is needed for all algorithms----------------------
-         #---------#f# SLR: train SLR -----------
+      #------------------Above code is needed for all algorithms----------------------
+      #---------#f# SLR: train SLR -----------
+      if(!file.exists(paste0('data/workingData/SLR_summary_model_month_', csv_name_fold, '.csv'))){
          source("../EXPANSE_algorithm/scr//fun_slr_for.R")
          # check the predictor variables
          print("SLR predictors:")
@@ -119,8 +120,10 @@ if(nrow(df_sub)>200){
          
          slr_poll$eval_train %>% print()
          slr_poll$eval_test %>% print()
-         
-         #--------- RF--------
+      }
+      
+      #--------- RF--------
+      if(!file.exists(paste0('data/workingData/RF_vi_', csv_name_fold, '.csv'))){
          print("--------------- RF ---------------")
          set.seed(seed)
          
@@ -161,13 +164,13 @@ if(nrow(df_sub)>200){
                                               "nfold", "df_type", "year", "index"))
          source("../EXPANSE_algorithm/scr/fun_plot_rf_vi.R")
          plot_rf_vi(csv_name_fold, var_no = 15)
-         
       }
+      
       parallel::stopCluster(cl)
    }
    
 }else{
    print('Not enough data for building the models')
 }
-   
+
 

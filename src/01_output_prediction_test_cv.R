@@ -1,5 +1,5 @@
 source("../EXPANSE_algorithm/scr/fun_call_lib.R")
-target_poll = c('PM2.5', 'PM10', 'NO2', 'o3')
+target_poll = c('PM2.5', 'PM10', 'NO2', 'O3')
 csv_names <- gsub('SLR_result_all_', '', 
                   list.files('data/workingData/', 
                              'SLR_result_all_monthly_2010_')) %>% 

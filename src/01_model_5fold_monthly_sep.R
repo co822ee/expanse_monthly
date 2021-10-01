@@ -1,7 +1,8 @@
-# For PM2.5, only fold 1 and 4 are working... (need to check what's wrong with that)
+# For PM2.5, rerun for fold 3 and 5
+
 source("../EXPANSE_algorithm/scr/fun_call_lib.R")
 # Whether to tune RF
-target_poll = 'O3'
+target_poll = 'PM10'
 tuneRF_b = T
 # Multiple single years
 csv_name <- paste0('monthly_2010_sep_', target_poll)   #2008:2012
@@ -86,7 +87,7 @@ if(nrow(df_sub)>200){
          }
          
          #--------- RF--------
-         if(!file.exists(paste0('data/workingData/RF_vi_', csv_name, '_fold_1_m1', '.csv'))){
+         if(!file.exists(paste0('data/workingData/RF_vi_', csv_name_fold, '_m12', '.csv'))){
             print("--------------- RF ---------------")
             set.seed(seed)
             

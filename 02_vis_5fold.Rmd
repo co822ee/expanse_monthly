@@ -1,0 +1,576 @@
+---
+title: "02_vis_5fold"
+output: html_document
+---
+
+```{r setup, include=FALSE, message=F, warning=F, echo=F}
+knitr::opts_chunk$set(echo = TRUE)
+library(lubridate)
+```
+
+## 
+
+```{r load packages and read data}
+source("../EXPANSE_algorithm/scr/fun_call_lib.R")
+library(reshape2)
+library(GGally)
+library(APMtools)
+
+eu_bnd <- st_read("../expanse_shp/eu_expanse2.shp")
+met_str <- 'precip|temp|wind|pressure'
+years <- 2000:2019
+nfold=5
+```
+
+```{r usefule functions}
+read_perfm <- function(poll, sep=F){
+   if(sep){
+      csv_names <- gsub('SLR_result_all_', '', 
+                        list.files('data/workingData/', 
+                                   paste0('SLR_result_all_monthly_2010_sep_', poll))) %>% 
+         strsplit(., '_fold_') %>% lapply(., `[[`, 1) %>% unlist() %>% unique
+   }else{
+      csv_names <- gsub('SLR_result_all_', '', 
+                        list.files('data/workingData/', 
+                                   paste0('SLR_result_all_monthly_2010_', poll))) %>% 
+         strsplit(., '_fold_') %>% lapply(., `[[`, 1) %>% unlist() %>% unique
+   }
+   
+
+   all_test <- lapply(paste0("data/workingData/5cv_", csv_names, ".csv"), read.csv)
+   all_test
+}
+read_perfm2 <- function(poll){
+   csv_names <- gsub('SLR_result_all_', '', 
+                     list.files('../EXPANSE_algorithm/data/workingData/', 
+                                paste0('SLR_result_all_o3_', poll))) %>% 
+      strsplit(., '_fold_') %>% lapply(., `[[`, 1) %>% unlist() %>% unique
+   years <- csv_names %>% substr(., nchar(csv_names)-3, nchar(csv_names)) %>% 
+      as.numeric() %>% as.list()
+   
+   all_test <- lapply(paste0("../EXPANSE_algorithm/data/workingData/5cv_", csv_names[unlist(years)==2010], ".csv"), read.csv)
+   all_test
+}
+show_EM <- function(all_test, all_df_i){
+   
+   slr=all_test[[all_df_i]]$slr
+   rf=all_test[[all_df_i]]$rf
+   df_all <- data.frame(slr=error_matrix(all_test[[all_df_i]]$obs, slr),
+                        rf=error_matrix(all_test[[all_df_i]]$obs, rf))[c(1,5,7),]
+   df_all$EM = row.names(df_all)
+   df_all
+}
+comp_rf_slr <- function(csv_i, poll){
+   files <- list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_", poll))[grepl("fold", list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_", poll)))]
+   slr_name <- files[csv_i]
+   csv_name <- gsub('.csv', '', substr(slr_name, 19, nchar(slr_name)))
+   yr <- strsplit(slr_name, "_")[[1]][5]
+   nfold <- (strsplit(slr_name, "_")[[1]][8] %>% strsplit(., ".csv"))[[1]] %>% as.numeric()
+   # rf_name <- paste0("RF_vi_o_", yr, "_fold_", nfold, ".csv")
+   slr_result <- read.csv(paste0("data/workingData/", slr_name), header=T)
+   slr_result$yr <- yr
+   slr_result$nfold <- nfold
+   slr_result$increR2[1]=0
+   slr_result$incredR2 <- c(0, diff(slr_result$increR2))
+   p1 <- ggplot(slr_result)+
+      geom_col(aes(x=reorder(variables, incredR2), y=incredR2), 
+               position = "dodge2", fill='khaki')+
+      coord_flip() +
+      theme_light()+
+      labs(x = 'variable', y = 'increased R2',
+           title = paste0(yr, "_fold_", nfold))+
+      # facet_grid(EM~., scales ='free')+
+      # labs(title=years[[i]])+
+      theme(axis.title = element_text(size = 11),
+            axis.text = element_text(size = 11),
+            legend.title = element_text(size = 11),
+            legend.text = element_text(size = 11),
+            strip.text.y = element_text(size = 11))
+   # rf_vi <- read.csv(paste0("data/workingData/", rf_name))
+   source("../EXPANSE_algorithm/scr/fun_plot_rf_vi.R")
+   p2 <- plot_rf_vi(csv_name, var_no = 20)
+   grid.arrange(p1, p2, nrow=1, ncol=2)
+}
+extract_slr_var <- function(csv_i, poll, files){
+   # files <- list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_", poll))[grepl("fold", list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_", poll)))]
+   slr_name <- files[csv_i]
+   
+   yr <- strsplit(slr_name, "_")[[1]][5]
+   nfold <- (strsplit(slr_name, "_")[[1]][8] %>% strsplit(., ".csv"))[[1]] %>% as.numeric()
+   # rf_name <- paste0("RF_vi_o_", yr, "_fold_", nfold, ".csv")
+   slr_result <- read.csv(paste0("data/workingData/", slr_name), header=T)
+   slr_result$yr <- yr
+   slr_result$nfold <- nfold
+   slr_result$increR2[1]=0
+   slr_result$incredR2 <- c(0, diff(slr_result$increR2))
+   slr_var <- slr_result$variables[-1]
+   if(any(grepl(met_str, slr_var))){
+      slr_var[grepl(met_str, slr_var)] <- gsub('(\\_\\d+).*', '', slr_var[grepl(met_str, slr_var)])  
+   }
+   data.frame(var_name=slr_var, yr=yr, nfold=nfold)
+}
+extract_rf_var <- function(csv_i, poll, files){
+   # files <- list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_", poll))[grepl("fold", list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_", poll)))]
+   slr_name <- files[csv_i]
+   csv_name <- gsub('.csv', '', substr(slr_name, 19, nchar(slr_name)))
+   yr <- strsplit(slr_name, "_")[[1]][6]
+   nfold <- (strsplit(slr_name, "_")[[1]][8] %>% strsplit(., ".csv"))[[1]] %>% as.numeric()
+   
+   var_importance <- read.csv(paste0('data/workingData/RF_vi_', csv_name, '.csv'), 
+                              header = T)
+   rf_var10 <- (var_importance %>% top_n(10, vi))$var_name
+   
+   if(any(grepl(met_str, rf_var10))){
+      rf_var10[grepl(met_str, rf_var10)] <- gsub('(\\_\\d+).*', '', rf_var10[grepl(met_str, rf_var10)])  
+   }
+   data.frame(var_name=rf_var10, yr=yr, nfold=nfold)
+}
+extract_slr_var_annual <- function(csv_i, poll, files){
+   slr_name <- files[csv_i]
+   
+   yr <- strsplit(slr_name, "_")[[1]][5]
+   nfold <- (strsplit(slr_name, "_")[[1]][8] %>% strsplit(., ".csv"))[[1]] %>% as.numeric()
+   # rf_name <- paste0("RF_vi_o_", yr, "_fold_", nfold, ".csv")
+   slr_result <- read.csv(paste0("../EXPANSE_algorithm/data/workingData/", slr_name), header=T)
+   slr_result$yr <- yr
+   slr_result$nfold <- nfold
+   slr_result$increR2[1]=0
+   slr_result$incredR2 <- c(0, diff(slr_result$increR2))
+   slr_var <- slr_result$variables[-1]
+   if(any(grepl(met_str, slr_var))){
+      slr_var[grepl(met_str, slr_var)] <- gsub('(\\_\\d+).*', '', slr_var[grepl(met_str, slr_var)])  
+   }
+   data.frame(var_name=slr_var, yr=yr, nfold=nfold)
+}
+extract_rf_var_annual <- function(csv_i, poll, files){
+   slr_name <- files[csv_i]
+   csv_name <- gsub('.csv', '', substr(slr_name, 19, nchar(slr_name)))
+   yr <- strsplit(slr_name, "_")[[1]][6]
+   nfold <- (strsplit(slr_name, "_")[[1]][8] %>% strsplit(., ".csv"))[[1]] %>% as.numeric()
+   
+   var_importance <- read.csv(paste0('../EXPANSE_algorithm//data/workingData/RF_vi_', csv_name, '.csv'), 
+                              header = T)
+   rf_var10 <- (var_importance %>% top_n(10, vi))$var_name
+   
+   if(any(grepl(met_str, rf_var10))){
+      rf_var10[grepl(met_str, rf_var10)] <- gsub('(\\_\\d+).*', '', rf_var10[grepl(met_str, rf_var10)])  
+   }
+   data.frame(var_name=rf_var10, yr=yr, nfold=nfold)
+}
+extract_slr_var_monthly <- function(csv_i, poll, files){
+   # files <- list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_", poll))[grepl("fold", list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_", poll)))]
+   slr_name <- files[csv_i]
+   
+   yr <- strsplit(slr_name, "_")[[1]][5]
+   nfold <- (strsplit(slr_name, "_")[[1]][9]) %>% as.numeric()
+   
+   month_i <- (strsplit(slr_name, "_")[[1]][10] %>% 
+                  strsplit(., ".csv"))[[1]] %>% 
+      gsub('m', '', .) %>% as.numeric()
+   
+   # rf_name <- paste0("RF_vi_o_", yr, "_fold_", nfold, ".csv")
+   slr_result <- read.csv(paste0("data/workingData/", slr_name), header=T)
+   slr_result$month <- month_i
+   slr_result$nfold <- nfold
+   slr_result$increR2[1]=0
+   slr_result$incredR2 <- c(0, diff(slr_result$increR2))
+   slr_var <- slr_result$variables[-1]
+   if(any(grepl(met_str, slr_var))){
+      slr_var[grepl(met_str, slr_var)] <- gsub('(\\_\\d+).*', '', slr_var[grepl(met_str, slr_var)])  
+   }
+   data.frame(var_name=slr_var, yr=yr, nfold=nfold, month=month_i)
+}
+extract_rf_var_monthly <- function(csv_i, poll, files){
+   # files <- list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_", poll))[grepl("fold", list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_", poll)))]
+   slr_name <- files[csv_i]
+   csv_name <- gsub('.csv', '', substr(slr_name, 19, nchar(slr_name)))
+   yr <- strsplit(slr_name, "_")[[1]][5]
+   nfold <- (strsplit(slr_name, "_")[[1]][9]) %>% as.numeric()
+   
+   month_i <- (strsplit(slr_name, "_")[[1]][10] %>% 
+                  strsplit(., ".csv"))[[1]] %>% 
+      gsub('m', '', .) %>% as.numeric()
+   
+   var_importance <- read.csv(paste0('data/workingData/RF_vi_', csv_name, '.csv'), 
+                              header = T)
+   rf_var10 <- (var_importance %>% top_n(10, vi))$var_name
+   
+   if(any(grepl(met_str, rf_var10))){
+      rf_var10[grepl(met_str, rf_var10)] <- gsub('(\\_\\d+).*', '', rf_var10[grepl(met_str, rf_var10)])  
+   }
+   data.frame(var_name=rf_var10, yr=yr, nfold=nfold, month=month_i)
+}
+create_heatmap_monthly <- function(poll){
+   # Annual
+   files <- list.files("../EXPANSE_algorithm//data/workingData/", paste0("SLR_summary_model_o3_", poll, '_2010'))[grepl("fold", list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_", poll)))]
+   slr_vars_annual <- lapply(seq_along(files), extract_slr_var_annual, poll=poll, files=files) %>% do.call(rbind, .)
+   rf_vars_annual <- lapply(seq_along(files), extract_rf_var_annual, poll=poll, files=files) %>% do.call(rbind, .)
+   
+   
+   # 12-month
+   files <- list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_", poll))[grepl("fold", list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_", poll)))]
+   slr_vars <- lapply(seq_along(files), extract_slr_var, poll=poll, files=files) %>% do.call(rbind, .)
+   rf_vars <- lapply(seq_along(files), extract_rf_var, poll=poll, files=files) %>% do.call(rbind, .)
+   slr_tbl <- with(slr_vars, table(var_name, yr))
+   rf_tbl <- with(rf_vars, table(var_name, yr))
+   slr_tbl <- slr_tbl[mixedorder(row.names(slr_tbl), decreasing=T),]
+   rf_tbl <- rf_tbl[mixedorder(row.names(rf_tbl), decreasing=T),]
+   # 1-month
+   files_monthly <- list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_sep_", poll))[grepl("fold", list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_sep_", poll)))]
+   files_monthly <- files_monthly[mixedorder(files_monthly)]
+   slr_vars_m <- lapply(seq_along(files_monthly), extract_slr_var_monthly, poll=poll, files=files_monthly) %>% do.call(rbind, .)
+   rf_vars_m <- lapply(seq_along(files_monthly), extract_rf_var_monthly, poll=poll, files=files_monthly) %>% do.call(rbind, .)
+   
+   
+   # All
+   slr_vars_all <- rbind(slr_vars_m, slr_vars %>% mutate(month='12-month'),
+                         slr_vars_annual %>% mutate(month='annual'))
+   rf_vars_all <- rbind(rf_vars_m, rf_vars %>% mutate(month='12-month'),
+                        rf_vars_annual %>% mutate(month='annual'))
+   
+   slr_tbl_m <- with(slr_vars_all, table(var_name, month))
+   rf_tbl_m <- with(rf_vars_all, table(var_name, month))
+   slr_tbl_m <- slr_tbl_m[mixedorder(row.names(slr_tbl_m), decreasing=T), mixedorder(colnames(slr_tbl_m))]
+   rf_tbl_m <- rf_tbl_m[mixedorder(row.names(rf_tbl_m), decreasing=T), mixedorder(colnames(rf_tbl_m))]
+   
+   print(heatmap(rf_tbl_m, Colv = NA, Rowv = NA, scale="column", main=paste0('RF: ', poll)))
+   print(heatmap(slr_tbl_m, Colv = NA, Rowv = NA, scale="column", main=paste0('SLR: ', poll)))
+}
+```
+
+```{r over performance (5-fold CV), eval=F, echo=F}
+overall_perfm <- function(target_poll){
+   # Monthly models (built for all 12 months)
+all_test <- read_perfm(target_poll)
+em_df1 <- lapply(seq_along(all_test), show_EM, all_test=all_test)
+em_df1 <- do.call(rbind, em_df1)
+em_df1$config <- '12-month'
+
+# Monthly models (built for each month)
+all_test_sep <- read_perfm(target_poll, T)
+em_df1_sep <- lapply(seq_along(all_test_sep), show_EM, all_test=all_test_sep)
+em_df1_sep <- do.call(rbind, em_df1_sep)
+em_df1_sep$config <- '1-month'
+
+# Annual models (bult for a year)
+all_test2 <- read_perfm2(target_poll)
+em_df2 <- lapply(seq_along(all_test2), show_EM, all_test=all_test2)
+em_df2 <- do.call(rbind, em_df2)
+em_df2$config <- 'annual'
+
+em_df <- rbind(em_df1, em_df1_sep, em_df2)
+
+   # Overall
+   p1 <- ggplot(em_df %>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM", 'config')), 
+          aes(x=model, y=values, fill=config))+
+      geom_bar(stat="identity", position = "dodge2")+
+      # facet_grid(EM~., scales ='free')+
+      # labs(title=years[[i]])+
+      labs(y="R squared")+
+      theme(axis.title = element_text(size = 18),
+            axis.text = element_text(size = 16),
+            legend.title = element_text(size = 16),
+            legend.text = element_text(size = 16),
+            strip.text.y = element_text(size = 15))+
+      geom_hline(aes(yintercept=0.575))
+   
+   p2 <- ggplot(em_df %>% filter(EM=='RMSE') %>%  gather("model", "values", -c("EM", 'config')), 
+          aes(x=model, y=values, fill=config))+
+      geom_bar(stat="identity", position = "dodge2")+
+      # facet_grid(EM~., scales ='free')+
+      # labs(title=years[[i]])+
+      labs(y="RMSE")+
+      theme(axis.title = element_text(size = 18),
+            axis.text = element_text(size = 16),
+            legend.title = element_text(size = 16),
+            legend.text = element_text(size = 16),
+            strip.text.y = element_text(size = 15))+
+      geom_hline(aes(yintercept=09.51))
+   list(p1, p2)
+}
+do.call(grid.arrange, overall_perfm('NO2'))
+
+```
+
+## 5-fold accuracy of annual aggregated predictions
+
+```{r aggregated annual performance (5-fold CV)}
+annual_perf <- function(target_poll){
+   all_test <- read_perfm(target_poll)
+   all_test_sep <- read_perfm(target_poll, T)
+   all_test2 <- read_perfm2(target_poll)
+   
+   all_m <- (all_test[[1]])
+   all_my <- all_m %>% group_by(sta_code, year) %>% 
+      summarise(rf=mean(rf), slr=mean(slr), .groups = 'drop') %>% 
+      inner_join(., all_test2[[1]][, c('obs','sta_code')], by='sta_code')
+   
+   all_m_sep <- (all_test_sep[[1]])
+   all_m_sepy <- all_m_sep %>% group_by(sta_code, year) %>% 
+      summarise(rf=mean(rf), slr=mean(slr), .groups = 'drop') %>% 
+      inner_join(., all_test2[[1]][, c('obs','sta_code')], by='sta_code')
+   
+   # Monthly models (built for all 12 months)
+   em_df1 <- show_EM(list(all_my), 1)
+   em_df1$config <- '12-month'
+   
+   # Monthly models (built for each month)
+   em_df1_sep <-  show_EM(list(all_m_sepy), 1)
+   em_df1_sep$config <- '1-month'
+   
+   # Annual models (bult for a year)
+   em_df2 <- show_EM(all_test2, 1)
+   em_df2$config <- 'annual'
+   
+   em_all <- rbind(em_df1, em_df1_sep, em_df2)
+   
+   # Aggregate the predictions into annual scale
+   p1 <- ggplot(em_all %>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM", 'config')), 
+          aes(x=model, y=values, fill=config))+
+   geom_bar(stat="identity", position = "dodge2")+
+   # facet_grid(EM~., scales ='free')+
+   # labs(title=years[[i]])+
+   labs(y="R squared", title = target_poll)+
+   theme(axis.title = element_text(size = 18),
+         axis.text = element_text(size = 16),
+         legend.title = element_text(size = 16),
+         legend.text = element_text(size = 16),
+         strip.text.y = element_text(size = 15))+
+   geom_hline(aes(yintercept=0.575))
+   
+   p2 <- ggplot(em_all %>% filter(EM=='RMSE') %>%  gather("model", "values", -c("EM", 'config')), 
+          aes(x=model, y=values, fill=config))+
+   geom_bar(stat="identity", position = "dodge2")+
+   # facet_grid(EM~., scales ='free')+
+   # labs(title=years[[i]])+
+   labs(y="RMSE", title = target_poll)+
+   theme(axis.title = element_text(size = 18),
+         axis.text = element_text(size = 16),
+         legend.title = element_text(size = 16),
+         legend.text = element_text(size = 16),
+         strip.text.y = element_text(size = 15))+
+   geom_hline(aes(yintercept=09.51))
+
+   list(p1, p2)
+}
+
+do.call(grid.arrange, annual_perf('NO2'))
+
+```
+
+# Seasonality
+
+## Visualization
+```{r}
+vis <- function(target_poll, no_sta){
+   no2 <- read.csv(paste0('data/workingData/5cv_monthly_2010_', target_poll, '.csv'))
+   no2 <- no2 %>% mutate(date=as.Date(make_datetime(year, month)),
+                         cntr=substr(sta_code, 1, 2))
+   
+   no2_sep <- read.csv(paste0('data/workingData/5cv_monthly_2010_sep_', target_poll, '.csv'))
+   no2_sep <- no2_sep %>% mutate(date=as.Date(make_datetime(year, month)),
+                         cntr=substr(sta_code, 1, 2))
+   
+   p1 <- ggplot(no2 %>% filter(sta_code%in%unique(no2$sta_code)[1:no_sta]) %>% 
+             gather('model', 'values', 
+                    c('slr','rf','obs')), 
+          aes(date, values, group=interaction(model, sta_code), col=model))+
+      geom_line()+
+      labs(title=paste0(target_poll, ' (12-month)'))+
+      theme(axis.text.x = element_text(angle = 90))+
+      facet_wrap(sta_code~., scales='free_y')
+   p_sep <- ggplot(no2_sep %>% filter(sta_code%in%unique(no2$sta_code)[1:no_sta]) %>% 
+             gather('model', 'values', 
+                    c('slr','rf','obs')), 
+          aes(date, values, group=interaction(model, sta_code), col=model))+
+      geom_line()+
+      labs(title=paste0(target_poll, '(1-month)'))+
+      theme(axis.text.x = element_text(angle = 90))+
+      facet_wrap(sta_code~., scales='free_y')
+   print(p1)
+   print(p_sep)
+}
+vis('NO2', 20)
+
+```
+
+## Correlations of residuals
+```{r}
+
+plot_cor <- function(target_poll, all_df, var_c, var_title){
+
+   no2_wide2 <- dcast(all_df[, c(var_c, 'month', 'sta_code')],
+                      as.formula(paste0('sta_code~', 'month')), 
+                      value.var = var_c)
+   
+   
+   lowerFn <- function(data, mapping, ...) {
+      p <- ggplot(data = data, mapping = mapping) +
+         geom_point(colour = "black") +
+         geom_abline(intercept=0, slope=1, col='red')+
+         lims(x=c(min(data), max(data)),y=c(min(data), max(data)))
+      p
+   }
+   png(file = paste0("results/figures/corr_obs", 'corr_', target_poll, "_2010_", 
+                     var_title, '.png'), 
+       res = 150, width = 1500, height = 1300)
+   print(ggpairs(data=no2_wide2[,-c(1)], lower = list(continuous = wrap(lowerFn)),
+                 title = var_c,
+                 diag=list(discrete="barDiag", 
+                           continuous = wrap("densityDiag", alpha=0.5))))
+   dev.off()
+   return(0)
+}
+all_cor <- function(target_poll){
+   all_m <- ( read_perfm(target_poll)[[1]])
+   all_m_sep <- (read_perfm(target_poll, T)[[1]])
+   plot_cor(target_poll, all_m_sep %>% mutate(res=rf-obs), 'res', '1-month rf res')
+   plot_cor(target_poll, all_m_sep %>% mutate(res=slr-obs), 'res', '1-month slr res')
+}
+all_cor('NO2')
+
+```
+
+# Observations
+
+## AR analysis
+Use stations that are active throughout a certain period of time.
+
+```{r}
+library(data.table)
+monthly <- fread('../EXPANSE_APM//data/processed/all_m_conc4xy_cleaned.csv')
+
+```
+
+
+
+```{r}
+## Overall ACF (All stations together, all pollutan)
+# test_acf <- acf((monthly%>%filter(sta_code%in%names(monthly_tbl[monthly_tbl==max(monthly_tbl)])))$obs)
+```
+
+```{r}
+calc_acf <- function(dat, varname, time_step){
+   out_dat <- acf(dat[, varname], plot=F, lag.max=(time_step-1)*12)$acf[-1]
+   out_dat <- as.data.frame(t(out_dat))
+   names(out_dat) <- paste0('ar_', 1:length(out_dat))
+   out_dat
+}
+acf_timeseries <- function(dat, tperiod, target_poll){
+   dat <- dat %>% filter(component_caption==target_poll,
+                                 year%in%(tperiod)) %>% 
+      arrange(year, month)
+   dat_tbl <- table(dat$sta_code)
+   acf_dat <- dat%>%
+      filter(sta_code%in%names(dat_tbl[dat_tbl==max(dat_tbl)])) %>% 
+      group_by(sta_code) %>%
+      do(calc_acf(., 'obs', length(tperiod)))
+   
+   acf_avg <- acf_dat[-1] %>% apply(., 2, mean)
+   # summarise(
+   #    acf1=acf(obs, plot = F)$acf[-1][1],
+   #    acf12=acf(obs, plot = F)$acf[-1][12],
+   #    acf24=acf(obs, plot = F)$acf[-1][24]
+   # )
+   ggplot(acf_dat %>% gather('ar', 'values', -'sta_code') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))))+
+      geom_line(aes(x=reorder(lag, lag), y=values, group=sta_code), alpha=0.25)+
+      geom_line(data=acf_avg %>% t()%>% as.data.frame()%>% gather('ar', 'values') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))), 
+                aes(x=reorder(lag, lag), y=values, group=1), col='red', lwd=1)+
+      geom_text(data=acf_avg %>% 
+                   t()%>% as.data.frame()%>% 
+                   gather('ar', 'values') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))) %>% 
+                   filter(lag%in% c(1, seq(12, (12*length(tperiod)-1), 12))),
+                aes(label=round(values, 1), x=lag+0.2, y=0.7), col='red')+
+      geom_vline(xintercept = seq(12, (12*length(tperiod)-1), 12),
+                 lty=2)+
+      labs(title=paste0(target_poll, ': ', min(tperiod), '-', max(tperiod)),
+           subtitle=paste0('no. of stations=', nrow(acf_dat)),
+           x='lag (months)', y='autocorrelation')+
+      scale_x_discrete(breaks = c(1, seq(3, (12*length(tperiod)-1), 3)))
+   # geom_abline(intercept = 0, slope=1)
+}
+
+
+```
+```{r, fig.height=13, fig.width=15}
+
+do.call(grid.arrange, list(acf_timeseries(monthly, 2015:2019,'NO2'),
+                           acf_timeseries(monthly, 2010:2019,'NO2'),
+                           acf_timeseries(monthly, 2000:2019,'NO2')))
+```
+
+```{r, fig.height=13, fig.width=15}
+
+do.call(grid.arrange, list(acf_timeseries(monthly, 2015:2019,'PM10'),
+                           acf_timeseries(monthly, 2010:2019,'PM10'),
+                           acf_timeseries(monthly, 2000:2019,'PM10')))
+```
+
+```{r, fig.height=13, fig.width=15}
+
+do.call(grid.arrange, list(acf_timeseries(monthly, 2015:2019,'PM2.5'),
+                           acf_timeseries(monthly, 2010:2019,'PM2.5'),
+                           acf_timeseries(monthly, 2000:2019,'PM2.5')))
+```
+
+
+
+```{r, fig.height=13, fig.width=15}
+do.call(grid.arrange, list(acf_timeseries(monthly, 2015:2019,'O3'),
+                           acf_timeseries(monthly, 2010:2019,'O3'),
+                           acf_timeseries(monthly, 2000:2019,'O3')))
+```
+
+
+
+```{r}
+# monthly <- monthly %>% mutate(date=as.Date(make_datetime(year, month)),
+#                          cntr=substr(sta_code, 1, 2))
+#    
+# ggplot(monthly %>% filter(sta_code=='IT0871A'), 
+#        aes(date, obs, group=sta_code))+
+#    geom_line()+
+#    theme(axis.text.x = element_text(angle = 90))+
+#    facet_wrap(sta_code~., scales='free_y')
+ 
+```
+
+```{r}
+# plot.acf <- function(ACFobj) {
+#    rr <- ACFobj$acf[-1]
+#    kk <- length(rr)
+#    nn <- ACFobj$n.used
+#    plot(seq(kk), rr, type = "h", lwd = 2, yaxs = "i", xaxs = "i", 
+#         ylim = c(floor(min(rr)), 1), xlim = c(0, kk + 1), xlab = "Lag", 
+#         ylab = "Correlation", las = 1)
+#    abline(h = -1/nn + c(-2, 2)/sqrt(nn), lty = "dashed", col = "blue")
+#    abline(h = 0)
+# }
+# all_m <- ( read_perfm(target_poll)[[1]])
+# all_m_sep <- (read_perfm(target_poll, T)[[1]])
+# m_acf1 <- all_m %>%
+#    group_by(sta_code) %>%
+#    summarise(
+#       obs=acf(obs, plot = F)$acf[-1][1],
+#       slr=acf(slr, plot = F)$acf[-1][1],
+#       rf=acf(rf, plot = F)$acf[-1][1]
+#    )
+# 
+# ggplot(m_acf1, aes(x=obs, y=slr))+
+#    geom_point()+
+#    geom_abline(intercept = 0, slope=1)
+# all_m <- all_m %>% mutate(date=as.Date(make_datetime(year, month)),
+#                          cntr=substr(sta_code, 1, 2))
+#    
+#    p1 <- ggplot(all_m %>% filter(sta_code=='ES1689A') %>% 
+#              gather('model', 'values', 
+#                     c('slr','rf','obs')), 
+#           aes(date, values, group=interaction(model, sta_code), col=model))+
+#       geom_line()+
+#       # labs(title=paste0(target_poll, ' (12-month)'))+
+#       theme(axis.text.x = element_text(angle = 90))+
+#       facet_wrap(sta_code~., scales='free_y')
+
+```
+
+

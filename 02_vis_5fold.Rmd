@@ -4,8 +4,9 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE, message=F, warning=F, echo=F}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(include=T, message=F, warning=F, echo=F, eval=T)
 library(lubridate)
+library(data.table)
 ```
 
 ## 
@@ -378,25 +379,28 @@ vis <- function(target_poll, no_sta){
       geom_line()+
       labs(title=paste0(target_poll, ' (12-month)'))+
       theme(axis.text.x = element_text(angle = 90))+
-      facet_wrap(sta_code~., scales='free_y')
+      facet_wrap(sta_code~., scales='fixed')
    p_sep <- ggplot(no2_sep %>% filter(sta_code%in%unique(no2$sta_code)[1:no_sta]) %>% 
              gather('model', 'values', 
                     c('slr','rf','obs')), 
           aes(date, values, group=interaction(model, sta_code), col=model))+
       geom_line()+
-      labs(title=paste0(target_poll, '(1-month)'))+
+      labs(title=paste0(target_poll, ' (1-month)'))+
       theme(axis.text.x = element_text(angle = 90))+
-      facet_wrap(sta_code~., scales='free_y')
+      facet_wrap(sta_code~., scales='fixed')
    print(p1)
    print(p_sep)
 }
+
 vis('NO2', 20)
+vis('O3', 20)
+vis('PM2.5', 20)
 
 ```
 
-## Correlations of residuals
-```{r}
 
+```{r}
+## Correlations of residuals
 plot_cor <- function(target_poll, all_df, var_c, var_title){
 
    no2_wide2 <- dcast(all_df[, c(var_c, 'month', 'sta_code')],
@@ -431,15 +435,23 @@ all_cor('NO2')
 
 ```
 
-# Observations
 
 ## AR analysis
 Use stations that are active throughout a certain period of time.
 
-```{r}
-library(data.table)
-monthly <- fread('../EXPANSE_APM//data/processed/all_m_conc4xy_cleaned.csv')
+Correlation only compare values between two different variables, whereas autocorrelation gives the correlations between the same variables from two different time points with a k lag. 
 
+The autocorrelation (Box and Jenkins, 1976) function can be used for the following two purposes ([source](https://www.itl.nist.gov/div898/handbook/eda/section3/eda35c.htm)):
+1. To detect non-randomness in data.
+2. To identify an appropriate time series model if the data are not random.
+
+The autocorrelation values can also give the following information:
+1. Trends
+2. Seasonal patterns
+
+
+```{r}
+monthly <- fread('../EXPANSE_APM//data/processed/all_m_conc4xy_cleaned.csv')
 ```
 
 
@@ -467,6 +479,7 @@ acf_timeseries <- function(dat, tperiod, target_poll){
       do(calc_acf(., 'obs', length(tperiod)))
    
    acf_avg <- acf_dat[-1] %>% apply(., 2, mean)
+   acf_sd <- acf_dat[-1] %>% apply(., 2, sd)
    # summarise(
    #    acf1=acf(obs, plot = F)$acf[-1][1],
    #    acf12=acf(obs, plot = F)$acf[-1][12],
@@ -480,46 +493,177 @@ acf_timeseries <- function(dat, tperiod, target_poll){
                    t()%>% as.data.frame()%>% 
                    gather('ar', 'values') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))) %>% 
                    filter(lag%in% c(1, seq(12, (12*length(tperiod)-1), 12))),
-                aes(label=round(values, 1), x=lag+0.2, y=0.7), col='red')+
+                aes(label=round(values, 1), x=lag+0.2, y=0.75), col='red')+
+      
+      geom_line(data=(acf_avg+acf_sd) %>% t()%>% as.data.frame()%>% gather('ar', 'values') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))), 
+                aes(x=reorder(lag, lag), y=values, group=1), col='grey', lwd=0.7, lty=3)+
+      geom_line(data=(acf_avg-acf_sd) %>% t()%>% as.data.frame()%>% gather('ar', 'values') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))), 
+                aes(x=reorder(lag, lag), y=values, group=1), col='grey', lwd=0.7, lty=3)+
+      
       geom_vline(xintercept = seq(12, (12*length(tperiod)-1), 12),
                  lty=2)+
       labs(title=paste0(target_poll, ': ', min(tperiod), '-', max(tperiod)),
            subtitle=paste0('no. of stations=', nrow(acf_dat)),
            x='lag (months)', y='autocorrelation')+
-      scale_x_discrete(breaks = c(1, seq(3, (12*length(tperiod)-1), 3)))
+      scale_x_discrete(breaks = c(1, seq(6, (12*length(tperiod)-1), 6)))
    # geom_abline(intercept = 0, slope=1)
 }
 
 
+vis_ar <- function(target_poll, target_str){
+   no2 <- read.csv(paste0('data/workingData/5cv_monthly_2010_', target_poll, '.csv'))
+   no2 <- no2 %>% mutate(date=as.Date(make_datetime(year, month)),
+                         cntr=substr(sta_code, 1, 2))
+   
+   no2_sep <- read.csv(paste0('data/workingData/5cv_monthly_2010_sep_', target_poll, '.csv'))
+   no2_sep <- no2_sep %>% mutate(date=as.Date(make_datetime(year, month)),
+                         cntr=substr(sta_code, 1, 2))
+   
+   dat <- no2 %>% arrange(sta_code, year, month)
+   dat_tbl <- table(dat$sta_code)
+   acf_dat <- dat%>%
+      filter(sta_code%in%names(dat_tbl[dat_tbl==max(dat_tbl)])) %>% 
+      group_by(sta_code) %>%
+      do(calc_acf(., target_str, max(dat_tbl)))
+   acf_avg <- acf_dat[-1] %>% apply(., 2, mean)
+   acf_sd <- acf_dat[-1] %>% apply(., 2, sd)
+   
+   dat_sep <- no2_sep %>% arrange(sta_code, year, month)
+   dat_tbl_sep <- table(dat_sep$sta_code)
+   acf_dat_sep <- dat_sep %>%
+      filter(sta_code%in%names(dat_tbl_sep[dat_tbl_sep==max(dat_tbl_sep)])) %>% group_by(sta_code) %>%
+      do(calc_acf(., target_str, max(dat_tbl_sep)))
+   acf_avg_sep <- acf_dat_sep[-1] %>% apply(., 2, mean)
+   acf_sd_sep <- acf_dat_sep[-1] %>% apply(., 2, sd)
+   
+   
+   
+   acf_dat_obs <- dat_sep %>%
+      filter(sta_code%in%names(dat_tbl_sep[dat_tbl_sep==max(dat_tbl_sep)])) %>% group_by(sta_code) %>%
+      do(calc_acf(., 'obs', max(dat_tbl_sep)))
+   acf_avg_obs <- acf_dat_obs[-1] %>% apply(., 2, mean)
+   acf_sd_obs <- acf_dat_obs[-1] %>% apply(., 2, sd)
+   
+   
+   
+   p1 <- ggplot(acf_dat %>% gather('ar', 'values', -'sta_code') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))))+
+      geom_line(aes(x=reorder(lag, lag), y=values, group=sta_code), alpha=0.25)+
+      geom_line(data=acf_avg %>% t()%>% as.data.frame()%>% gather('ar', 'values') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))), 
+                aes(x=reorder(lag, lag), y=values, group=1), col='red', lwd=1)+
+      geom_text(data=acf_avg %>% 
+                   t()%>% as.data.frame()%>% 
+                   gather('ar', 'values') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))) %>% 
+                   filter(lag%in% c(1, seq(2, 12, 2))),
+                aes(label=round(values, 1), x=lag+0.2, y=0.75), col='red')+
+      geom_line(data=(acf_avg+acf_sd) %>% t()%>% as.data.frame()%>% gather('ar', 'values') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))), 
+                aes(x=reorder(lag, lag), y=values, group=1), col='grey', lwd=0.7, lty=3)+
+      geom_line(data=(acf_avg-acf_sd) %>% t()%>% as.data.frame()%>% gather('ar', 'values') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))), 
+                aes(x=reorder(lag, lag), y=values, group=1), col='grey', lwd=0.7, lty=3)+
+      
+      geom_vline(xintercept = seq(2, 12, 2),
+                 lty=2)+
+      labs(title=paste0(target_poll, ' (2010): ', target_str, ' (12-month)'),
+           subtitle=paste0('no. of stations=', nrow(acf_dat)),
+           x='lag (months)', y='autocorrelation')+
+      scale_x_discrete(breaks = c(1, seq(2, 12, 2)))
+   
+   
+   p_sep <- 
+   ggplot(acf_dat_sep %>% gather('ar', 'values', -'sta_code') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))))+
+      geom_line(aes(x=reorder(lag, lag), y=values, group=sta_code), alpha=0.25)+
+      geom_line(data=acf_avg_sep %>% t()%>% as.data.frame()%>% gather('ar', 'values') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))), 
+                aes(x=reorder(lag, lag), y=values, group=1), col='red', lwd=1)+
+      geom_text(data=acf_avg_sep %>% 
+                   t()%>% as.data.frame()%>% 
+                   gather('ar', 'values') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))) %>% 
+                   filter(lag%in% c(1, seq(2, 12, 2))),
+                aes(label=round(values, 1), x=lag+0.2, y=0.75), col='red')+
+      geom_line(data=(acf_avg_sep+acf_sd_sep) %>% t()%>% as.data.frame()%>% gather('ar', 'values') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))), 
+                aes(x=reorder(lag, lag), y=values, group=1), col='grey', lwd=0.7, lty=3)+
+      geom_line(data=(acf_avg_sep-acf_sd_sep) %>% t()%>% as.data.frame()%>% gather('ar', 'values') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))), 
+                aes(x=reorder(lag, lag), y=values, group=1), col='grey', lwd=0.7, lty=3)+
+      
+      geom_vline(xintercept = seq(2, 12, 2),
+                 lty=2)+
+      labs(title=paste0(target_poll, ' (2010): ', target_str, ' (1-month)'),
+           subtitle=paste0('no. of stations=', nrow(acf_dat_sep)),
+           x='lag (months)', y='autocorrelation')+
+      scale_x_discrete(breaks = c(1, seq(2, 12, 2)))
+   
+    p_obs <- 
+   ggplot(acf_dat_obs %>% gather('ar', 'values', -'sta_code') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))))+
+      geom_line(aes(x=reorder(lag, lag), y=values, group=sta_code), alpha=0.25)+
+      geom_line(data=acf_avg_obs %>% t()%>% as.data.frame()%>% gather('ar', 'values') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))), 
+                aes(x=reorder(lag, lag), y=values, group=1), col='red', lwd=1)+
+      geom_text(data=acf_avg_obs %>% 
+                   t()%>% as.data.frame()%>% 
+                   gather('ar', 'values') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))) %>% 
+                   filter(lag%in% c(1, seq(2, 12, 2))),
+                aes(label=round(values, 1), x=lag+0.2, y=0.75), col='red')+
+         geom_line(data=(acf_avg_obs+acf_sd_obs) %>% t()%>% as.data.frame()%>% gather('ar', 'values') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))), 
+                aes(x=reorder(lag, lag), y=values, group=1), col='grey', lwd=0.7, lty=3)+
+       geom_line(data=(acf_avg_obs-acf_sd_obs) %>% t()%>% as.data.frame()%>% gather('ar', 'values') %>% mutate(lag=as.numeric(gsub('ar_', '', ar))), 
+                aes(x=reorder(lag, lag), y=values, group=1), col='grey', lwd=0.7, lty=3)+
+      
+       
+      geom_vline(xintercept = seq(2, 12, 2),
+                 lty=2)+
+      labs(title=paste0(target_poll, ' (2010): ',  'obs'),
+           subtitle=paste0('no. of stations=', nrow(acf_dat_sep)),
+           x='lag (months)', y='autocorrelation')+
+      scale_x_discrete(breaks = c(1, seq(2, 12, 2)))
+   
+   print(grid.arrange(p1, p_sep, p_obs))
+}
 ```
-```{r, fig.height=13, fig.width=15}
+
+```{r, fig.height=6, fig.width=5}
+vis_ar('NO2', 'slr')
+vis_ar('NO2', 'rf')
+```
+
+```{r, fig.height=6, fig.width=5}
+vis_ar('O3', 'slr')
+vis_ar('O3', 'rf')
+```
+
+```{r, fig.height=6, fig.width=5}
+vis_ar('PM2.5', 'slr')
+vis_ar('PM2.5', 'rf')
+```
+
+# Observations
+
+```{r, fig.height=10, fig.width=12}
 
 do.call(grid.arrange, list(acf_timeseries(monthly, 2015:2019,'NO2'),
                            acf_timeseries(monthly, 2010:2019,'NO2'),
                            acf_timeseries(monthly, 2000:2019,'NO2')))
 ```
 
-```{r, fig.height=13, fig.width=15}
+
+
+
+```{r, fig.height=10, fig.width=12}
+do.call(grid.arrange, list(acf_timeseries(monthly, 2015:2019,'O3'),
+                           acf_timeseries(monthly, 2010:2019,'O3'),
+                           acf_timeseries(monthly, 2000:2019,'O3')))
+```
+
+```{r, fig.height=10, fig.width=12}
 
 do.call(grid.arrange, list(acf_timeseries(monthly, 2015:2019,'PM10'),
                            acf_timeseries(monthly, 2010:2019,'PM10'),
                            acf_timeseries(monthly, 2000:2019,'PM10')))
 ```
 
-```{r, fig.height=13, fig.width=15}
+```{r, fig.height=10, fig.width=12}
 
 do.call(grid.arrange, list(acf_timeseries(monthly, 2015:2019,'PM2.5'),
                            acf_timeseries(monthly, 2010:2019,'PM2.5'),
                            acf_timeseries(monthly, 2000:2019,'PM2.5')))
 ```
 
-
-
-```{r, fig.height=13, fig.width=15}
-do.call(grid.arrange, list(acf_timeseries(monthly, 2015:2019,'O3'),
-                           acf_timeseries(monthly, 2010:2019,'O3'),
-                           acf_timeseries(monthly, 2000:2019,'O3')))
-```
 
 
 

@@ -477,7 +477,7 @@ monthly_perfm_region <- function(target_poll){
    # Heatmap
    p1 <- ggplot(heat_df, aes(x=month, y=name, fill=values))+
       geom_tile()+
-      labs(x='month', y='', fill='R2')+
+      labs(x='month', y='', fill='R2', title=target_poll)+
       theme(axis.title = element_text(size = 18),
             axis.text = element_text(size = 13),
             axis.text.x = element_text(angle = 90),
@@ -570,8 +570,23 @@ annual_perfm_region <- function(target_poll){
    
    
    em_df <- rbind(em_df1, em_df1_sep, em_df2)
-   # Overall
-   p1 <- ggplot(em_df %>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM", 'config', 'climate_zone')), 
+   heat_df <- em_df %>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM", 'config', 'climate_zone'))
+   heat_df$name <- paste0(heat_df$model, '-', 
+                          unlist(lapply(strsplit(heat_df$config, '-'), `[[`, 1)))
+    pal <- wes_palette("Zissou1", 100, type = "continuous")
+   # Heatmap
+   p1 <- ggplot(heat_df, aes(x=climate_zone, y=name, fill=values))+
+      geom_tile()+
+      labs(x='month', y='', fill='R2', title=target_poll)+
+      theme(axis.title = element_text(size = 18),
+            axis.text = element_text(size = 13),
+            axis.text.x = element_text(angle = 90),
+            legend.title = element_text(size = 16),
+            legend.text = element_text(size = 16),
+            strip.text.y = element_text(size = 15))+
+      scale_fill_gradientn(colours = pal)
+   # barplot
+   p2 <- ggplot(em_df %>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM", 'config', 'climate_zone')),
           aes(x=model, y=values, fill=config))+
       geom_bar(stat="identity", position = "dodge2")+
       facet_grid(.~climate_zone, scales ='free')+
@@ -582,11 +597,12 @@ annual_perfm_region <- function(target_poll){
             legend.title = element_text(size = 16),
             legend.text = element_text(size = 16),
             strip.text.y = element_text(size = 15))
-   p1
+   grid.arrange(p1, p2)
 }
 annual_perfm_region('NO2')
 annual_perfm_region('O3')
 annual_perfm_region('PM2.5')
+annual_perfm_region('PM10')
 
 
 # ggplot(all_test2_yr[[1]] %>% filter(climate_zone=='Northern'))+

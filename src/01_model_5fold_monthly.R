@@ -1,11 +1,6 @@
-# This script run the three models for multiple single years or multiple years
-# for supervised linear regression model, geographically weighted regression (stepwise),
-# and random forests.
-# 03062021 Run the code and exclude/include zoneID as a predictor and with tuning RF
-# 0624 finished running for NO2 and PM2.5
 source("../EXPANSE_algorithm/scr/fun_call_lib.R")
 # Whether to tune RF
-target_poll = 'PM2.5'
+target_poll = 'O3'
 tuneRF_b = T
 # Multiple single years
 csv_name <- paste0('monthly_2010_', target_poll)   #2008:2012

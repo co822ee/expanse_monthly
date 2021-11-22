@@ -65,7 +65,7 @@ if(nrow(df_sub)>200){
                csv_name_fold_m <- paste0(csv_name, '_m', sub_month)
                slr_result <- slr(train_sub_m$obs, as.data.frame(train_sub_m[, pred_c]),
                                  cv_n = csv_name_fold_m, 
-                                 R2thres = ifelse(target_poll=='PM2.5', 0.0, 0.01))
+                                 R2thres = ifelse(target_poll%in%c('PM2.5', 'PM10'), 0.0, 0.01))
                slr_model <- slr_result[[3]]
                # debug (why macc is not included)
                return(slr_model)

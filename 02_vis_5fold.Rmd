@@ -62,17 +62,23 @@ show_EM <- function(all_test, all_df_i, region=F, month=F){
    df_all <- data.frame(slr=error_matrix(all_test[[all_df_i]]$obs, slr),
                         rf=error_matrix(all_test[[all_df_i]]$obs, rf))[c(1,5,7),]
    df_all$EM = row.names(df_all)
-   if(region){
+   if(region&(!month)){
       df_all$climate_zone <- paste0(unique(all_test[[all_df_i]]$climate_zone), 
                                     '_',
                                     nrow(all_test[[all_df_i]]))
          
       
    }
-   if(month){
+   if(month&(!region)){
       df_all$month <- paste0('m', unique(all_test[[all_df_i]]$month), 
                              '_',
                              nrow(all_test[[all_df_i]]))
+   }
+   if(month&region){
+      df_all$month <- paste0('m', unique(all_test[[all_df_i]]$month), 
+                             '_',
+                             nrow(all_test[[all_df_i]]))
+          df_all$climate_zone <- unique(all_test[[all_df_i]]$climate_zone)
    }
    df_all
 }
@@ -421,97 +427,41 @@ annual_perf <- function(target_poll){
          legend.text = element_text(size = 16),
          strip.text.y = element_text(size = 15))
 
-   list(p1, p3, p2)
+   # list(p1, p3, p2)
+   list(p1, p2)
 }
+```
 
-# do.call(grid.arrange, annual_perf('NO2'))
+* Similar performance between the models for NO2
+
+```{r aggregated annual no2}
+do.call(grid.arrange, annual_perf('NO2'))
+```
+
+* 12-month SLR model performs the worst. This can be observed in O3, PM10, and PM2.5.
+
+```{r aggregated annual o3}
 do.call(grid.arrange, annual_perf('O3'))
-# do.call(grid.arrange, annual_perf('PM2.5'))
+```
+
+
+```{r aggregated annual pm10}
 do.call(grid.arrange, annual_perf('PM10'))
-
 ```
 
 
-## 5-fold accuracy of monthly predictions separated by months
-MSE-R2 was used:
-```{r}
-# TBC: use the heatmap to visualize
-monthly_perfm_region <- function(target_poll){
-   # Monthly models (built for all 12 months)
-   all_test <- read_perfm(target_poll)
-   df_all <- read.csv(paste0('data/raw/gee/pred_', target_poll, '_2010_monthly.csv')) %>% dplyr::select(zoneID, sta_code)
-   df_all <- inner_join(df_all,
-                        read.csv('../EXPANSE_predictor/data/processed/climate_code.csv'),
-                        by='zoneID')
-   df_all <- df_all[!duplicated(df_all$sta_code),]
-   all_test2 <- inner_join(all_test[[1]], df_all, by=c('sta_code'))
-   all_test3 <- lapply(unique(all_test2$month), function(id){
-      all_test2 %>% filter(month==id)
-   })
-   
-   em_df1 <- lapply(seq_along(all_test3), show_EM, all_test=all_test3, region=F, month=T)
-   em_df1 <- do.call(rbind, em_df1)
-   em_df1$config <- '12-month'
 
-   # Monthly models (built for each month)
-   all_test_sep <- read_perfm(target_poll, T)
-   all_test_sep2 <- inner_join(all_test_sep[[1]], df_all, by=c('sta_code'))
-   all_test_sep3 <- lapply(unique(all_test_sep2$month), function(id){
-      all_test_sep2 %>% filter(month==id)
-   })
+```{r aggregated annual pm25}
+do.call(grid.arrange, annual_perf('PM2.5'))
 
-
-   em_df1_sep <- lapply(seq_along(all_test_sep3), show_EM, all_test=all_test_sep3, region=F, month=T)
-   em_df1_sep <- do.call(rbind, em_df1_sep)
-   em_df1_sep$config <- '1-month'
-
-
-   em_df <- rbind(em_df1, em_df1_sep)
-   heat_df <- em_df %>% 
-    filter(EM=='rsq') %>% 
-    gather("model", "values", -c("EM", 'config', 'month')) %>% 
-    mutate(month=factor(month, levels = unique(em_df$month)))
-   heat_df$name <- paste0(heat_df$model,'-', unlist(lapply(strsplit(heat_df$config, '-'), `[[`, 1)))
-   
-   pal <- wes_palette("Zissou1", 100, type = "continuous")
-   # Heatmap
-   p1 <- ggplot(heat_df, aes(x=month, y=name, fill=values))+
-      geom_tile()+
-      labs(x='month', y='', fill='R2', title=target_poll)+
-      theme(axis.title = element_text(size = 18),
-            axis.text = element_text(size = 13),
-            axis.text.x = element_text(angle = 90),
-            legend.title = element_text(size = 16),
-            legend.text = element_text(size = 16),
-            strip.text.y = element_text(size = 15))+
-      scale_fill_gradientn(colours = pal)
-      # scale_fill_brewer(palette = 'Oranges')
-      # 
-   # barplot
-   # p2 <- ggplot(em_df %>% 
-   #                 filter(EM=='rsq') %>% 
-   #                 gather("model", "values", -c("EM", 'config', 'month')) %>% 
-   #                 mutate(month=factor(month, levels = unique(em_df$month))),
-   #        aes(x=model, y=values, fill=config))+
-   #    geom_bar(stat="identity", position = "dodge2")+
-   #    facet_grid(.~month, scales ='free')+
-   #    labs(title=target_poll)+
-   #    labs(y="R squared")+
-   #    theme(axis.title = element_text(size = 18),
-   #          axis.text = element_text(size = 16),
-   #          legend.title = element_text(size = 16),
-   #          legend.text = element_text(size = 16),
-   #          strip.text.y = element_text(size = 15))
-
-   p1
-}
-monthly_perfm_region('PM10')
 ```
+
 
 ## 5-fold accuracy of annual (aggregated) predictions separated by climate zones
 MSE-R2 was used:
 
-```{r monthly performance (5-fold CV), eval=F, echo=F, fig.height=4, fig.width=5}
+
+```{r monthly performance (5-fold CV), eval=T, echo=F, fig.height=8.2, fig.width=7.5}
 annual_perfm_region <- function(target_poll){
    all_test2_yr <- read_perfm2(target_poll)
    # Monthly models (built for all 12 months)
@@ -577,7 +527,7 @@ annual_perfm_region <- function(target_poll){
    # Heatmap
    p1 <- ggplot(heat_df, aes(x=climate_zone, y=name, fill=values))+
       geom_tile()+
-      labs(x='month', y='', fill='R2', title=target_poll)+
+      labs(x='', y='', fill='R2', title=target_poll)+
       theme(axis.title = element_text(size = 18),
             axis.text = element_text(size = 13),
             axis.text.x = element_text(angle = 90),
@@ -597,12 +547,32 @@ annual_perfm_region <- function(target_poll){
             legend.title = element_text(size = 16),
             legend.text = element_text(size = 16),
             strip.text.y = element_text(size = 15))
-   grid.arrange(p1, p2)
+   print(grid.arrange(p1, p2, nrow=2, ncol=1))
 }
+```
+
+* For NO2, the differences in R2 between models for different regions are small. 
+
+```{r, eval=T, echo=F, fig.height=8.2, fig.width=7.5}
 annual_perfm_region('NO2')
+```
+
+
+* For O3, PM10, PM2.5, the differences in R2 between models for different regions are large. For O3, the 1-month SLR even outperforms the annual model for estimating the annual average concentrations 
+
+
+```{r, eval=T, echo=F, fig.height=8.2, fig.width=7.5}
 annual_perfm_region('O3')
-annual_perfm_region('PM2.5')
+```
+
+
+```{r, eval=T, echo=F, fig.height=8.2, fig.width=7.5}
 annual_perfm_region('PM10')
+```
+
+
+```{r, eval=T, echo=F, fig.height=8.2, fig.width=7.5}
+annual_perfm_region('PM2.5')
 
 
 # ggplot(all_test2_yr[[1]] %>% filter(climate_zone=='Northern'))+
@@ -616,12 +586,121 @@ annual_perfm_region('PM10')
 ```
 
 
+## 5-fold CV accuracy of monthly predictions separated by months and climate zones
+```{r}
+monthly_perfm_region_month <- function(target_poll){
+   # Monthly models (built for all 12 months)
+   all_test <- read_perfm(target_poll)
+   if(target_poll=='PM2.5'){
+      df_all <- read.csv(paste0('data/raw/gee/pred_PM25_2010_monthly.csv')) %>% dplyr::select(zoneID, sta_code)
+   }else{
+      df_all <- read.csv(paste0('data/raw/gee/pred_', target_poll, '_2010_monthly.csv')) %>% dplyr::select(zoneID, sta_code)
+   }
+   df_all <- inner_join(df_all,
+                        read.csv('../EXPANSE_predictor/data/processed/climate_code.csv'),
+                        by='zoneID')
+   df_all <- df_all[!duplicated(df_all$sta_code),]
+   all_test2 <- inner_join(all_test[[1]], df_all, by=c('sta_code'))
+   id_df <- expand.grid(month=unique(all_test2$month), climate_zone=unique(all_test2$climate_zone))
+   all_test3 <- lapply(1:nrow(id_df), function(i){
+      id=id_df[i, 'month']
+      climate_id=id_df[i, 'climate_zone']
+         all_test2 %>% filter(month==id, climate_zone==climate_id)
+   })
+   
+   em_df1 <- lapply(seq_along(all_test3), show_EM, all_test=all_test3, region=T, month=T)
+   em_df1 <- do.call(rbind, em_df1)
+   em_df1$config <- '12-month'
+
+   # Monthly models (built for each month)
+   all_test_sep <- read_perfm(target_poll, T)
+   all_test_sep2 <- inner_join(all_test_sep[[1]], df_all, by=c('sta_code'))
+   all_test_sep3 <- lapply(1:nrow(id_df), function(i){
+      id=id_df[i, 'month']
+      climate_id=id_df[i, 'climate_zone']
+         all_test_sep2 %>% filter(month==id, climate_zone==climate_id)
+   })
+
+
+   em_df1_sep <- lapply(seq_along(all_test_sep3), show_EM, all_test=all_test_sep3, region=T, month=T)
+   em_df1_sep <- do.call(rbind, em_df1_sep)
+   em_df1_sep$config <- '1-month'
+
+
+   em_df <- rbind(em_df1, em_df1_sep)
+   heat_df <- em_df %>% 
+    filter(EM=='rsq') %>% 
+    gather("model", "values", -c("EM", 'config', 'month', 'climate_zone')) %>% 
+    mutate(month=factor(month, levels = unique(em_df$month)))
+   heat_df$name <- paste0(heat_df$model,'-', unlist(lapply(strsplit(heat_df$config, '-'), `[[`, 1)))
+   
+   pal <- wes_palette("Zissou1", 100, type = "continuous")
+   # Heatmap
+   p1 <- ggplot(heat_df, aes(x=month, y=name, fill=values))+
+      geom_tile()+
+      labs(x='month', y='', fill='R2', title=target_poll)+
+      facet_wrap(climate_zone~., scales='free_x')+
+      theme(axis.title = element_text(size = 18),
+            axis.text = element_text(size = 13),
+            axis.text.x = element_text(angle = 90),
+            legend.title = element_text(size = 16),
+            legend.text = element_text(size = 16),
+            strip.text.y = element_text(size = 15))+
+      scale_fill_gradientn(colours = pal)
+      # scale_fill_brewer(palette = 'Oranges')
+      # 
+   # barplot
+   em_df2 <- em_df
+   em_df2$month <- unlist(lapply(strsplit(em_df2$month, '_'), `[[`, 1))
+   p2 <- ggplot(em_df2 %>%
+                   filter(EM=='rsq') %>%
+                   gather("model", "values", -c("EM", 'config', 'month','climate_zone')) %>%
+                   mutate(month=factor(month, levels = unique(em_df2$month))),
+          aes(x=model, y=values, fill=config))+
+      geom_bar(stat="identity", position = "dodge2")+
+      facet_grid(climate_zone~month, scales ='free')+
+      labs(title=target_poll)+
+      labs(y="R squared")+
+      theme(axis.title = element_text(size = 18),
+            axis.text = element_text(size = 16),
+            legend.title = element_text(size = 16),
+            legend.text = element_text(size = 16),
+            strip.text.y = element_text(size = 15))
+
+   grid.arrange(p1, p2)
+}
+```
+
+
+* For NO2, in some months, the 12-month SLR cannot captures the spatial variation as well as the 1-month SLR. (May-Aug in Northern; Dec-Feb in Alpine)
+
+
+```{r, fig.height=10, fig.width=7}
+monthly_perfm_region_month('NO2')
+```
+
+
+* For O3, PM10, and PM2.5, in specific months, the 12-month SLR model performs way worst than the 1-month SLR model. 
+
+```{r, fig.height=10, fig.width=7}
+monthly_perfm_region_month('O3')
+```
+```{r, fig.height=10, fig.width=7}
+monthly_perfm_region_month('PM10')
+```
+```{r, fig.height=10, fig.width=7}
+monthly_perfm_region_month('PM2.5')
+```
+
+
+
 ## Predictors selected in SLR
 
 ```{r, fig.width=8, fig.height=10}
-# create_heatmap_monthly('NO2')
-# create_heatmap_monthly('PM2.5')
-# create_heatmap_monthly('O3')
+create_heatmap_monthly('NO2')
+create_heatmap_monthly('O3')
+create_heatmap_monthly('PM10')
+create_heatmap_monthly('PM2.5')
 ```
 
 # Seasonality
@@ -982,4 +1061,109 @@ do.call(grid.arrange, list(acf_timeseries(monthly, 2015:2019,'PM2.5'),
 
 ```
 
+
+
+### Archive
+5-fold accuracy of monthly predictions separated by months
+
+```{r}
+## 5-fold accuracy of monthly predictions separated by months
+# MSE-R2 was used:
+monthly_perfm_region <- function(target_poll){
+   # Monthly models (built for all 12 months)
+   all_test <- read_perfm(target_poll)
+   if(target_poll=='PM2.5'){
+      df_all <- read.csv(paste0('data/raw/gee/pred_PM25_2010_monthly.csv')) %>% dplyr::select(zoneID, sta_code)
+   }else{
+      df_all <- read.csv(paste0('data/raw/gee/pred_', target_poll, '_2010_monthly.csv')) %>% dplyr::select(zoneID, sta_code)
+   }
+   df_all <- inner_join(df_all,
+                        read.csv('../EXPANSE_predictor/data/processed/climate_code.csv'),
+                        by='zoneID')
+   df_all <- df_all[!duplicated(df_all$sta_code),]
+   all_test2 <- inner_join(all_test[[1]], df_all, by=c('sta_code'))
+   all_test3 <- lapply(unique(all_test2$month), function(id){
+      all_test2 %>% filter(month==id)
+   })
+   
+   em_df1 <- lapply(seq_along(all_test3), show_EM, all_test=all_test3, region=F, month=T)
+   em_df1 <- do.call(rbind, em_df1)
+   em_df1$config <- '12-month'
+
+   # Monthly models (built for each month)
+   all_test_sep <- read_perfm(target_poll, T)
+   all_test_sep2 <- inner_join(all_test_sep[[1]], df_all, by=c('sta_code'))
+   all_test_sep3 <- lapply(unique(all_test_sep2$month), function(id){
+      all_test_sep2 %>% filter(month==id)
+   })
+
+
+   em_df1_sep <- lapply(seq_along(all_test_sep3), show_EM, all_test=all_test_sep3, region=F, month=T)
+   em_df1_sep <- do.call(rbind, em_df1_sep)
+   em_df1_sep$config <- '1-month'
+
+
+   em_df <- rbind(em_df1, em_df1_sep)
+   heat_df <- em_df %>% 
+    filter(EM=='rsq') %>% 
+    gather("model", "values", -c("EM", 'config', 'month')) %>% 
+    mutate(month=factor(month, levels = unique(em_df$month)))
+   heat_df$name <- paste0(heat_df$model,'-', unlist(lapply(strsplit(heat_df$config, '-'), `[[`, 1)))
+   
+   pal <- wes_palette("Zissou1", 100, type = "continuous")
+   # Heatmap
+   p1 <- ggplot(heat_df, aes(x=month, y=name, fill=values))+
+      geom_tile()+
+      labs(x='month', y='', fill='R2', title=target_poll)+
+      theme(axis.title = element_text(size = 18),
+            axis.text = element_text(size = 13),
+            axis.text.x = element_text(angle = 90),
+            legend.title = element_text(size = 16),
+            legend.text = element_text(size = 16),
+            strip.text.y = element_text(size = 15))+
+      scale_fill_gradientn(colours = pal)
+      # scale_fill_brewer(palette = 'Oranges')
+      # 
+   # barplot
+   p2 <- ggplot(em_df %>%
+                   filter(EM=='rsq') %>%
+                   gather("model", "values", -c("EM", 'config', 'month')) %>%
+                   mutate(month=factor(month, levels = unique(em_df$month))),
+          aes(x=model, y=values, fill=config))+
+      geom_bar(stat="identity", position = "dodge2")+
+      facet_grid(.~month, scales ='free')+
+      labs(title=target_poll)+
+      labs(y="R squared")+
+      theme(axis.title = element_text(size = 18),
+            axis.text = element_text(size = 16),
+            legend.title = element_text(size = 16),
+            legend.text = element_text(size = 16),
+            strip.text.y = element_text(size = 15))
+
+   grid.arrange(p1, p2)
+}
+```
+
+
+* For NO2, in some months, the 12-month SLR cannot captures the spatial variation as well as the 1-month SLR. (May-Aug; Dec-Feb)
+
+```{r, fig.height=6.6, fig.width=7}
+monthly_perfm_region('NO2')
+```
+
+* For all pollutants, in specific months, the 12-month SLR model performs way worst than the 1-month SLR model. (especially in summer)
+
+```{r, fig.height=6.6, fig.width=7}
+monthly_perfm_region('O3')
+```
+
+
+```{r, fig.height=6.6, fig.width=7}
+monthly_perfm_region('PM10')
+```
+
+
+```{r, fig.height=6.6, fig.width=7}
+monthly_perfm_region('PM2.5')
+```
 

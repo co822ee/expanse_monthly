@@ -10,7 +10,8 @@ read_data <- function(target_poll, yr){
       target_str=tolower(target_poll)
    }
    
-   df_all <- read.csv(paste0('data/raw/gee/pred_', target_str, '_2010_monthly.csv'))
+   df_all <- read.csv(paste0('data/raw/gee/pred_', target_str, '_',
+                             yr, '_monthly.csv'))
    # Read in station metadata
    sta <- read.csv("../EXPANSE_APM/data/processed/all_sta.csv")
    # # There are 3 missing rows and 7 rows with unknown values for sta_type

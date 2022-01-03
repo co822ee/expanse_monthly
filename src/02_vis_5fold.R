@@ -115,6 +115,40 @@ extract_rf_var <- function(csv_i, poll, files){
 }
 
 
+extract_slr_var_annual <- function(csv_i, poll, files){
+   slr_name <- files[csv_i]
+   
+   yr <- strsplit(slr_name, "_")[[1]][5]
+   nfold <- (strsplit(slr_name, "_")[[1]][8] %>% strsplit(., ".csv"))[[1]] %>% as.numeric()
+   # rf_name <- paste0("RF_vi_o_", yr, "_fold_", nfold, ".csv")
+   slr_result <- read.csv(paste0("../EXPANSE_algorithm/data/workingData/", slr_name), header=T)
+   slr_result$yr <- yr
+   slr_result$nfold <- nfold
+   slr_result$increR2[1]=0
+   slr_result$incredR2 <- c(0, diff(slr_result$increR2))
+   slr_var <- slr_result$variables[-1]
+   if(any(grepl(met_str, slr_var))){
+      slr_var[grepl(met_str, slr_var)] <- gsub('(\\_\\d+).*', '', slr_var[grepl(met_str, slr_var)])  
+   }
+   data.frame(var_name=slr_var, yr=yr, nfold=nfold)
+}
+extract_rf_var_annual <- function(csv_i, poll, files){
+   slr_name <- files[csv_i]
+   csv_name <- gsub('.csv', '', substr(slr_name, 19, nchar(slr_name)))
+   yr <- strsplit(slr_name, "_")[[1]][6]
+   nfold <- (strsplit(slr_name, "_")[[1]][8] %>% strsplit(., ".csv"))[[1]] %>% as.numeric()
+   
+   var_importance <- read.csv(paste0('../EXPANSE_algorithm//data/workingData/RF_vi_', csv_name, '.csv'), 
+                              header = T)
+   rf_var10 <- (var_importance %>% top_n(10, vi))$var_name
+   
+   if(any(grepl(met_str, rf_var10))){
+      rf_var10[grepl(met_str, rf_var10)] <- gsub('(\\_\\d+).*', '', rf_var10[grepl(met_str, rf_var10)])  
+   }
+   data.frame(var_name=rf_var10, yr=yr, nfold=nfold)
+}
+
+
 extract_slr_var_monthly <- function(csv_i, poll, files){
    # files <- list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_", poll))[grepl("fold", list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_", poll)))]
    slr_name <- files[csv_i]
@@ -159,6 +193,13 @@ extract_rf_var_monthly <- function(csv_i, poll, files){
    data.frame(var_name=rf_var10, yr=yr, nfold=nfold, month=month_i)
 }
 create_heatmap_monthly <- function(poll){
+   # Annual
+   files <- list.files("../EXPANSE_algorithm//data/workingData/", paste0("SLR_summary_model_o3_", poll, '_2010'))[grepl("fold", list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_", poll)))]
+   slr_vars_annual <- lapply(seq_along(files), extract_slr_var_annual, poll=poll, files=files) %>% do.call(rbind, .)
+   rf_vars_annual <- lapply(seq_along(files), extract_rf_var_annual, poll=poll, files=files) %>% do.call(rbind, .)
+   
+   
+   # 12-month
    files <- list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_", poll))[grepl("fold", list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_", poll)))]
    slr_vars <- lapply(seq_along(files), extract_slr_var, poll=poll, files=files) %>% do.call(rbind, .)
    rf_vars <- lapply(seq_along(files), extract_rf_var, poll=poll, files=files) %>% do.call(rbind, .)
@@ -166,14 +207,18 @@ create_heatmap_monthly <- function(poll){
    rf_tbl <- with(rf_vars, table(var_name, yr))
    slr_tbl <- slr_tbl[mixedorder(row.names(slr_tbl), decreasing=T),]
    rf_tbl <- rf_tbl[mixedorder(row.names(rf_tbl), decreasing=T),]
-   
+   # 1-month
    files_monthly <- list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_sep_", poll))[grepl("fold", list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_sep_", poll)))]
    files_monthly <- files_monthly[mixedorder(files_monthly)]
    slr_vars_m <- lapply(seq_along(files_monthly), extract_slr_var_monthly, poll=poll, files=files_monthly) %>% do.call(rbind, .)
    rf_vars_m <- lapply(seq_along(files_monthly), extract_rf_var_monthly, poll=poll, files=files_monthly) %>% do.call(rbind, .)
    
-   slr_vars_all <- rbind(slr_vars_m, slr_vars %>% mutate(month='12-month'))
-   rf_vars_all <- rbind(rf_vars_m, rf_vars %>% mutate(month='12-month'))
+   
+   # All
+   slr_vars_all <- rbind(slr_vars_m, slr_vars %>% mutate(month='12-month'),
+                         slr_vars_annual %>% mutate(month='annual'))
+   rf_vars_all <- rbind(rf_vars_m, rf_vars %>% mutate(month='12-month'),
+                        rf_vars_annual %>% mutate(month='annual'))
    
    slr_tbl_m <- with(slr_vars_all, table(var_name, month))
    rf_tbl_m <- with(rf_vars_all, table(var_name, month))
@@ -205,72 +250,75 @@ em_df2$config <- 'annual'
 
 em_df <- rbind(em_df1, em_df1_sep, em_df2)
 # Overall
-ggplot(em_df %>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM", 'config')), 
-       aes(x=model, y=values, fill=config))+
-   geom_bar(stat="identity", position = "dodge2")+
-   # facet_grid(EM~., scales ='free')+
-   # labs(title=years[[i]])+
-   labs(y="R squared")+
-   theme(axis.title = element_text(size = 18),
-         axis.text = element_text(size = 16),
-         legend.title = element_text(size = 16),
-         legend.text = element_text(size = 16),
-         strip.text.y = element_text(size = 15))+
-   geom_hline(aes(yintercept=0.575))
-
-ggplot(em_df %>% filter(EM=='RMSE') %>%  gather("model", "values", -c("EM", 'config')), 
-       aes(x=model, y=values, fill=config))+
-   geom_bar(stat="identity", position = "dodge2")+
-   # facet_grid(EM~., scales ='free')+
-   # labs(title=years[[i]])+
-   labs(y="RMSE")+
-   theme(axis.title = element_text(size = 18),
-         axis.text = element_text(size = 16),
-         legend.title = element_text(size = 16),
-         legend.text = element_text(size = 16),
-         strip.text.y = element_text(size = 15))+
-   geom_hline(aes(yintercept=09.51))
+# ggplot(em_df %>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM", 'config')), 
+#        aes(x=model, y=values, fill=config))+
+#    geom_bar(stat="identity", position = "dodge2")+
+#    # facet_grid(EM~., scales ='free')+
+#    # labs(title=years[[i]])+
+#    labs(y="R squared")+
+#    theme(axis.title = element_text(size = 18),
+#          axis.text = element_text(size = 16),
+#          legend.title = element_text(size = 16),
+#          legend.text = element_text(size = 16),
+#          strip.text.y = element_text(size = 15))+
+#    geom_hline(aes(yintercept=0.575))
+# 
+# ggplot(em_df %>% filter(EM=='RMSE') %>%  gather("model", "values", -c("EM", 'config')), 
+#        aes(x=model, y=values, fill=config))+
+#    geom_bar(stat="identity", position = "dodge2")+
+#    # facet_grid(EM~., scales ='free')+
+#    # labs(title=years[[i]])+
+#    labs(y="RMSE")+
+#    theme(axis.title = element_text(size = 18),
+#          axis.text = element_text(size = 16),
+#          legend.title = element_text(size = 16),
+#          legend.text = element_text(size = 16),
+#          strip.text.y = element_text(size = 15))+
+#    geom_hline(aes(yintercept=09.51))
 
 # Aggregate the monthly 5-fold CV predictions into annually
+all_y <- all_test2[[1]]
 all_m <- (all_test[[1]])
-all_my <- all_m %>% group_by(sta_code, year) %>% summarise(rf=mean(rf), slr=mean(slr))
-
+all_my <- all_m %>% group_by(sta_code, year) %>% 
+   summarise(rf=mean(rf), slr=mean(slr), .groups = 'drop') %>% 
+   inner_join(., all_y[, c('obs','sta_code')], by='sta_code')
 
 all_m_sep <- (all_test_sep[[1]])
-all_m_sepy <- all_m_sep %>% group_by(sta_code, year) %>% summarise(rf_m_sep=mean(rf), slr_m_sep=mean(slr))
+all_m_sepy <- all_m_sep %>% group_by(sta_code, year) %>% 
+   summarise(rf=mean(rf), slr=mean(slr), .groups = 'drop') %>% 
+   inner_join(., all_y[, c('obs','sta_code')], by='sta_code')
 
+# plot(all_y$rf, all_y$rf_m)
+# plot(all_y$rf, all_y$rf_m_sep)
+# plot(all_y$rf_m_sep, all_y$obs)
+# plot(all_y$rf_m, all_y$obs)
+# plot(all_y$rf, all_y$obs)
+# abline(0, 1)
+# plot(all_y$slr, all_y$obs)
+# plot(all_y$slr_m_sep, all_y$obs)
+# plot(all_y$slr, all_y$slr_m)
 
-all_my <- all_my %>% rename(rf_m=rf, slr_m=slr)
-all_y <- all_test2[[1]]
-names(all_y)
-all_y <- inner_join(all_y, all_my, by=c('sta_code', 'year'))
-all_y <- inner_join(all_y, all_m_sepy, by=c('sta_code', 'year'))
+# Monthly models (built for all 12 months)
+em_df1 <- show_EM(list(all_my), 1)
+em_df1$config <- '12-month'
 
-# 
-plot(all_y$rf, all_y$rf_m)
-plot(all_y$rf, all_y$rf_m_sep)
-plot(all_y$rf_m, all_y$obs)
-plot(all_y$rf, all_y$obs)
-abline(0, 1)
-plot(all_y$slr, all_y$obs)
-plot(all_y$slr_m_sep, all_y$obs)
-plot(all_y$slr, all_y$slr_m)
+# Monthly models (built for each month)
+em_df1_sep <-  show_EM(list(all_m_sepy), 1)
+em_df1_sep$config <- '1-month'
 
-em_all <- data.frame(slr=error_matrix(all_y$obs, all_y$slr),
-                     rf=error_matrix(all_y$obs, all_y$rf),
-                     slr_m=error_matrix(all_y$obs, all_y$slr_m),
-                     rf_m=error_matrix(all_y$obs, all_y$rf_m),
-                     slr_m_sep=error_matrix(all_y$obs, all_y$slr_m_sep),
-                     rf_m_sep=error_matrix(all_y$obs, all_y$rf_m_sep)
-                     )[c(1,5,7),]
-em_all$EM = row.names(em_all)
+# Annual models (bult for a year)
+em_df2 <- show_EM(all_test2, 1)
+em_df2$config <- 'annual'
+
+em_all <- rbind(em_df1, em_df1_sep, em_df2)
 
 # Aggregate the predictions into annual scale
-ggplot(em_all %>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM")), aes(x=model, y=values))+
+p1 <- ggplot(em_all %>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM", 'config')), 
+             aes(x=model, y=values, fill=config))+
    geom_bar(stat="identity", position = "dodge2")+
    # facet_grid(EM~., scales ='free')+
    # labs(title=years[[i]])+
-   labs(y="R squared")+
+   labs(y="R squared", title = target_poll)+
    theme(axis.title = element_text(size = 18),
          axis.text = element_text(size = 16),
          legend.title = element_text(size = 16),
@@ -278,11 +326,12 @@ ggplot(em_all %>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM")), ae
          strip.text.y = element_text(size = 15))+
    geom_hline(aes(yintercept=0.575))
 
-ggplot(em_all %>% filter(EM=='RMSE') %>%  gather("model", "values", -c("EM")), aes(x=model, y=values))+
+p2 <- ggplot(em_all %>% filter(EM=='RMSE') %>%  gather("model", "values", -c("EM", 'config')), 
+             aes(x=model, y=values, fill=config))+
    geom_bar(stat="identity", position = "dodge2")+
    # facet_grid(EM~., scales ='free')+
    # labs(title=years[[i]])+
-   labs(y="RMSE")+
+   labs(y="RMSE", title = target_poll)+
    theme(axis.title = element_text(size = 18),
          axis.text = element_text(size = 16),
          legend.title = element_text(size = 16),
@@ -290,8 +339,7 @@ ggplot(em_all %>% filter(EM=='RMSE') %>%  gather("model", "values", -c("EM")), a
          strip.text.y = element_text(size = 15))+
    geom_hline(aes(yintercept=09.51))
 
-library(reshape2)
-library(GGally)
+
 #------importance variable------
 create_heatmap_monthly(target_poll)
 
@@ -299,9 +347,39 @@ create_heatmap_monthly(target_poll)
 ## The most influential variables are the time-varying variables, 
 ## but then it shows that it is still difficult for RF to capture the temporal variations for some stations,
 ## and also the correlation of predictions between months is quite high
+#----------- coefficient values ----------
+# poll <- 'NO2'
+# files <- list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_sep_", poll))[grepl("fold", list.files("data/workingData/", paste0("SLR_summary_model_monthly_2010_sep_", poll)))]
+# 
+# extract_slr_coef <- function(csv_i, poll, files){
+#    slr_name <- files[csv_i]
+#    
+#    yr <- strsplit(slr_name, "_")[[1]][5]
+#    nfold <- (strsplit(slr_name, "_")[[1]][9]) %>% as.numeric()
+#    
+#    month_i <- (strsplit(slr_name, "_")[[1]][10] %>% 
+#                   strsplit(., ".csv"))[[1]] %>% 
+#       gsub('m', '', .) %>% as.numeric()
+#    
+#    # rf_name <- paste0("RF_vi_o_", yr, "_fold_", nfold, ".csv")
+#    slr_result <- read.csv(paste0("data/workingData/", slr_name), header=T)
+#    slr_result$month <- month_i
+#    slr_result$nfold <- nfold
+#    slr_result$increR2[1]=0
+#    slr_result$incredR2 <- c(0, diff(slr_result$increR2))
+#    slr_result
+# }
+# slr_coefs <- lapply(seq_along(files), extract_slr_coef, poll=poll, files=files) %>% do.call(rbind, .)
+# slr_coefs <- slr_coefs[slr_coefs$variables!='Final', ]
+# 
+# ggplot(slr_coefs, aes(x=month, y=beta, group=variables))+
+#    geom_line()+
+#    facet_wrap(variables~., scales = 'free_y')
+
+
 ##----------- Correlation in the predictions from different months: -----------
 
-plot_cor <- function(all_df, var_c){
+plot_cor <- function(all_df, var_c, var_title){
    
    no2_wide2 <- dcast(all_df[, c(var_c, 'month', 'sta_code')],
                       as.formula(paste0('sta_code~', 'month')), 
@@ -318,8 +396,9 @@ plot_cor <- function(all_df, var_c){
          lims(x=c(-5, 220),y=c(-5, 220))
       p
    }
-   png(file = paste0("results/figures/corr_obs", 'corr_', target_poll, "_2010_", var_c, '.png'), 
-       res = 150, width = 1300, height = 1300)
+   png(file = paste0("results/figures/corr_obs", 'corr_', target_poll, "_2010_", 
+                     var_title, '.png'), 
+       res = 150, width = 1500, height = 1300)
    print(ggpairs(data=no2_wide2[,-c(1)], lower = list(continuous = wrap(lowerFn)),
                  title = var_c,
                  diag=list(discrete="barDiag", 
@@ -328,15 +407,81 @@ plot_cor <- function(all_df, var_c){
    return(0)
 }
 
-plot_cor(all_m, 'obs')
+plot_cor(all_m, 'obs', 'obs')
 # plot_cor(all_m_sep, 'obs')
 
-plot_cor(all_m, 'slr')
-plot_cor(all_m_sep, 'slr')
+plot_cor(all_m, 'slr', '12-month slr')
+plot_cor(all_m_sep, 'slr', '1-month slr')
 
-plot_cor(all_m, 'rf')
-plot_cor(all_m_sep, 'rf')
+plot_cor(all_m, 'rf', '12-month rf')
+plot_cor(all_m_sep, 'rf', '1-month rf')
+# residual correlated?
+plot_cor(all_m_sep %>% mutate(res=rf-obs), 'res', '1-month rf res')
 
+
+## Plot observations vs predictions
+# lm_eqn <- function(df, x_var, y_var, intercept=T){
+#    if(intercept){
+#       m <- lm(as.formula(paste(y_var, '~', x_var, collapse = '')), df);
+#       eq <- substitute(italic(y) == b~"+"~a %.% italic(x)*","~~italic(R)^2~"="~r2, 
+#                        list(a = format(unname(coef(m)[2]), digits = 2),
+#                             b = format(unname(coef(m)[1]), digits = 2),
+#                             r2 = format(summary(m)$adj.r.squared, digits = 2)))
+#       return(as.character(as.expression(eq)))
+#    }else{
+#       m <- lm(as.formula(paste(y_var, '~', x_var, '-1', collapse = '')), df);;
+#       eq <- substitute(italic(y) == a %.% italic(x)*","~~italic(R)^2~"="~r2, 
+#                        list(a = format(unname(coef(m)[1]), digits = 2),
+#                             # b = format(unname(coef(m)[2]), digits = 2),
+#                             r2 = format(summary(m)$adj.r.squared, digits = 2)))
+#       return(as.character(as.expression(eq)))
+#    }
+#    
+# }
+lm_labels <- function(dat, x_var, y_var) {
+   mod <- lm(as.formula(paste(y_var, '~', x_var, collapse = '')), dat);
+   formula <- sprintf("italic(y) == %.2f %+.2f * italic(x)",
+                      round(coef(mod)[1], 2), round(coef(mod)[2], 2))
+   r2_value <- summary(mod)$adj.r.squared
+   r2 <- sprintf("italic(R^2) == %.2f", r2_value)
+   data.frame(formula = formula, r2 = r2, stringsAsFactors = FALSE)
+}
+
+plot_r2 <- function(all_df, obs_var, pred_var, var_title){
+   
+   labels <- all_df %>%
+      group_by(month) %>%
+      do(lm_labels(., pred_var, obs_var))
+   maxV <- max(c(all_df[, obs_var], all_df[, pred_var]))
+   minV <- min(c(all_df[, obs_var], all_df[, pred_var]))
+   # https://r-graphics.org/recipe-annotate-facet
+   png(file = paste0("results/figures/plot_obs", '_pred_', target_poll, "_2010_", 
+                     var_title, '.png'), 
+       res = 150, width = 1500, height = 1300)
+   print(ggplot(all_df)+
+            geom_point(aes_string(x=pred_var, y=obs_var))+
+            geom_smooth(data=all_df, aes_string(x=pred_var, y=obs_var),formula = y~x, 
+                        method='lm', fullrange=TRUE, col='blue', se=F)+
+            geom_text(data = labels, aes(label = formula), 
+                      x = -Inf, y = Inf, hjust = -0.06, vjust = 1.2, parse = TRUE) +
+            geom_text(data = labels, aes(label = r2), 
+                      x = -Inf, y = Inf, hjust = -0.06, vjust = 2.2, parse = TRUE)+
+            lims(x=c(minV, maxV),y=c(minV, maxV))+
+            facet_wrap(month~.)+
+            theme(axis.title = element_text(size = 18),
+                  axis.text = element_text(size = 16),
+                  legend.title = element_text(size = 16),
+                  legend.text = element_text(size = 16))
+            )
+   dev.off()
+   return(0)
+}
+
+plot_r2(all_m, 'obs', 'rf', '12-month rf')
+plot_r2(all_m_sep, 'obs', 'rf', '1-month rf')
+
+plot_r2(all_m_sep, 'obs', 'slr', '1-month slr')
+plot_r2(all_m, 'obs', 'slr', '12-month slr')
 
 
 ### 

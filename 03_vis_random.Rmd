@@ -15,6 +15,24 @@ library(wesanderson)
 library(gridExtra)
 ```
 
+```{r}
+all_files <- list.files('data/raw/gee/', 'random')
+   poll_df <- lapply(paste0('data/raw/gee/', all_files[grep('NO2', all_files)]), 
+                     fread) %>% do.call(rbind,.)
+   
+   zoneID <- lapply(paste0('data/raw/gee/', list.files('data/raw/gee/', 'zoneID')),
+                    fread) %>% do.call(rbind, .) %>% rename(zoneID=b1)
+   
+   all_df <- inner_join(zoneID[, c('zoneID', 'system:index')], 
+                        poll_df, by='system:index')
+   all_df <- inner_join(
+      read.csv('../EXPANSE_predictor/data/processed/climate_code.csv'),
+      all_df,
+      by='zoneID')
+table(all_df$climate_zone)
+```
+
+
 ```{r, fig.height=8.2, fig.width=7.5}
 heatmap <- function(target_poll){
    all_files <- list.files('data/raw/gee/', 'random')

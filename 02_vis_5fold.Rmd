@@ -682,13 +682,13 @@ monthly_perfm_region_month('NO2')
 
 * For O3, PM10, and PM2.5, in specific months, the 12-month SLR model performs way worst than the 1-month SLR model. 
 
-```{r, fig.height=10, fig.width=7}
+```{r, fig.height=10, fig.width=7.9}
 monthly_perfm_region_month('O3')
 ```
-```{r, fig.height=10, fig.width=7}
+```{r, fig.height=10, fig.width=7.9}
 monthly_perfm_region_month('PM10')
 ```
-```{r, fig.height=10, fig.width=7}
+```{r, fig.height=10, fig.width=7.9}
 monthly_perfm_region_month('PM2.5')
 ```
 
@@ -1147,23 +1147,23 @@ monthly_perfm_region <- function(target_poll){
 
 * For NO2, in some months, the 12-month SLR cannot captures the spatial variation as well as the 1-month SLR. (May-Aug; Dec-Feb)
 
-```{r, fig.height=6.6, fig.width=7}
+```{r, fig.height=6.6, fig.width=7.5}
 monthly_perfm_region('NO2')
 ```
 
 * For all pollutants, in specific months, the 12-month SLR model performs way worst than the 1-month SLR model. (especially in summer)
 
-```{r, fig.height=6.6, fig.width=7}
+```{r, fig.height=6.6, fig.width=7.5}
 monthly_perfm_region('O3')
 ```
 
 
-```{r, fig.height=6.6, fig.width=7}
+```{r, fig.height=6.6, fig.width=7.5}
 monthly_perfm_region('PM10')
 ```
 
 
-```{r, fig.height=6.6, fig.width=7}
+```{r, fig.height=6.6, fig.width=7.5}
 monthly_perfm_region('PM2.5')
 ```
 

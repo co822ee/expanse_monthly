@@ -34,13 +34,17 @@ A short description of your project
 
 ## Source code
 
-01_model_5fold_monthly.R runs each model using all monthly data from a year.
-01_model_5fold_monthly_sep.R runs each model separately using data from every month.
 
---- the following neeeds to be rerun because i reran the first two scripts for SLR!
-01_output_prediction_test_cv.R combines the validation dataset into one csv file.
-02_vis_5fold.R visualizes the 5-fold CV results (for both models for each month and models for all 12 months).
-02_vis_5fold.Rmd visualizes the 5-fold CV results (for both models for each month and models for all 12 months).
+01_model_5fold_monthly_sep.R trains and evaluates LUR models for every month using 5-fold cross-validation. It uses two algorithms to train the LUR models: supervised linear regression (SLR) and random forests (RF). 
+01_model_5fold_monthly_sep_gwr.R trains LUR models for every month using 5-fold cross-validation. It uses geographically weighted regression (GWR) to train the LUR models. 
+01_output_prediction_test_cv.R combines all hold-out validation data from the 5-fold CV.
+
+02_model_all_monthly_sep.R trains LUR models for every month using all available observations. It uses two algorithms to train the LUR models: supervised linear regression (SLR) and random forests (RF). 
+02_model_all_monthly_sep_gwr.R trains LUR models for every month using all available observations. It uses geographically weighted regression (GWR) to train the LUR models. 
+
+
+
+
 ### Function code
 00_fun_reaed_monthly_data_gee.R contains the 'read_data' function that reads monthly predictors for each pollutant and year(s).
 fun_output_rf.R outputs RF predictions and variable importance as csv files.

@@ -49,10 +49,12 @@ heatmap <- function(target_poll){
       read.csv('../EXPANSE_predictor/data/processed/climate_code.csv'),
       all_df,
       by='zoneID')
-   exc_name <- names(all_df)[!grepl('diff|ratio|slr', names(all_df))]
-   model_name <- names(all_df)[grepl('diff|ratio|slr', names(all_df))]
+   exc_name <- names(all_df)[!grepl('diff|ratio|slr|gwr', names(all_df))]
+   model_name <- names(all_df)[grepl('diff|ratio|slr|gwr', names(all_df))]
+   model_name <- model_name[mixedorder(model_name)]
    
    month <- strsplit(model_name, '_') %>% lapply(., `[[`, 2) %>% unlist %>% as.numeric()
+   month <- as.numeric(gsub('2010', '', month))
    model <- strsplit(model_name, '_') %>% lapply(., `[[`, 1) %>% unlist 
    df_months <- lapply(sort(unique(month)), function(month_i){
       sub_df <- all_df[, model_name[month==month_i]]
@@ -66,10 +68,11 @@ heatmap <- function(target_poll){
       # calculate the correlations for each climate zone in each month
       df_sub %>% 
          group_by(climate_zone) %>% 
-         summarise(ratio_diff=cor(diff, ratio), 
-                   ratio_slr1=cor(ratio, `slr1-month`),
-                   ratio_slr12=cor(ratio, `slr12-month`),
-                   slr1_slr12=cor(`slr1-month`, `slr12-month`)) %>% 
+         summarise(
+            ratio_diff=cor(diff, ratio),
+            gwr_ratio=cor(ratio, gwr),
+            gwr_diff=cor(diff, gwr)
+         ) %>% 
          mutate(month=month_i)
    })
    cor_months <- cor_months %>% do.call(rbind, .)
@@ -77,36 +80,75 @@ heatmap <- function(target_poll){
    
    heat_df <- cor_months %>% gather('model', 'values', c(-'month', -'climate_zone')) %>% 
       mutate(month=as.factor(month))
+   cbind(heat_df, data.frame(poll=target_poll))
+   # pal <- wes_palette("Zissou1", 100, type = "continuous")
+   # p1 <- ggplot(heat_df, aes(x=month, y=model, fill=values))+
+   #    geom_tile()+
+   #    facet_wrap(climate_zone~.)+
+   #    labs(x='month', y='', fill='cor', title=target_poll)+
+   #    theme(axis.title = element_text(size = 18),
+   #          axis.text = element_text(size = 13),
+   #          axis.text.x = element_text(angle = 90),
+   #          legend.title = element_text(size = 16),
+   #          legend.text = element_text(size = 16),
+   #          strip.text.y = element_text(size = 15))+
+   #    scale_fill_gradientn(colours = pal)
+   # # line chart
+   # p2 <- ggplot(heat_df, aes(x=month, y=values, col=model, group=model))+
+   #    geom_line()+
+   #    facet_wrap(climate_zone~.)+
+   #    labs(x='month', y='correlation', col='', title=target_poll)+
+   #    scale_color_manual(labels=c('ratio_diff', 'ratio_gwr'), values = c('red','blue'))+
+   #    # lims(y=c(0.4, 1))+
+   #    scale_y_continuous(breaks=c(-1,-0.5, seq(0,1,0.2)))+
+   #    theme_bw()+
+   #    theme(axis.title = element_text(size = 18),
+   #          axis.text = element_text(size = 13),
+   #          axis.text.x = element_text(angle = 0),
+   #          panel.grid.major = element_line(size=1.0),
+   #          legend.title = element_text(size = 16),
+   #          legend.text = element_text(size = 16),
+   #          strip.text.y = element_text(size = 15))
+   # Barplot
+    # p3 <- ggplot(heat_df, aes(x=month, y=values, fill=model))+
+    #   geom_bar(stat="identity", position = "dodge2")+
+    #   facet_wrap(climate_zone~.)+
+    #   labs(x='month', y='', fill='cor', title=target_poll)+
+    #   theme(axis.title = element_text(size = 18),
+    #         axis.text = element_text(size = 13),
+    #         axis.text.x = element_text(angle = 90),
+    #         legend.title = element_text(size = 16),
+    #         legend.text = element_text(size = 16),
+    #         strip.text.y = element_text(size = 15))
+   # p2
+   # ggsave(paste0('results/figures/cor_line_', target_poll, '.tiff'), width=9, height=4,
+   #        dpi=300, units = 'in')
+   # print(grid.arrange(p1, p2, nrow=2, ncol=1))
    
-   pal <- wes_palette("Zissou1", 100, type = "continuous")
-   p1 <- ggplot(heat_df, aes(x=month, y=model, fill=values))+
-      geom_tile()+
-      facet_wrap(climate_zone~.)+
-      labs(x='month', y='', fill='cor', title=target_poll)+
-      theme(axis.title = element_text(size = 18),
-            axis.text = element_text(size = 13),
-            axis.text.x = element_text(angle = 90),
-            legend.title = element_text(size = 16),
-            legend.text = element_text(size = 16),
-            strip.text.y = element_text(size = 15))+
-      scale_fill_gradientn(colours = pal)
-   
-   p2 <- ggplot(heat_df, aes(x=month, y=values, fill=model))+
-      geom_bar(stat="identity", position = "dodge2")+
-      facet_wrap(climate_zone~.)+
-      labs(x='month', y='', fill='cor', title=target_poll)+
-      theme(axis.title = element_text(size = 18),
-            axis.text = element_text(size = 13),
-            axis.text.x = element_text(angle = 90),
-            legend.title = element_text(size = 16),
-            legend.text = element_text(size = 16),
-            strip.text.y = element_text(size = 15))
-   print(grid.arrange(p1, p2, nrow=2, ncol=1))
 }
-heatmap('NO2')
-heatmap('O3')
-heatmap('PM10')
-heatmap('PM25')
+heatdf <- lapply(c('NO2','O3','PM10','PM25'), heatmap) %>% do.call(rbind,.)
+ggplot(heatdf, aes(x=month, y=values, col=model, group=model))+
+      geom_line(size=0.9)+
+      facet_grid(poll~climate_zone)+
+      labs(x='month', y='correlation', col='')+
+      # scale_color_manual(labels=c('ratio_gwr','diff_gwr','ratio_diff'), values = c('red','blue','green'))+
+      # lims(y=c(0.4, 1))+
+      scale_y_continuous(breaks=c(-1,-0.5, seq(0,1,0.2)))+
+      theme_bw()+
+      theme(axis.title = element_text(size = 18),
+            axis.text = element_text(size = 13),
+            axis.text.x = element_text(angle = 0),
+            panel.grid.major = element_line(size=0.9),
+            legend.title = element_text(size = 16),
+            legend.text = element_text(size = 16),
+            strip.text.y = element_text(size = 15),
+            strip.text.x = element_text(size = 15))
+ggsave(paste0('results/figures/cor_line_.tiff'), width=14, height=6,
+          dpi=300, units = 'in')
+# heatmap('NO2')
+# heatmap('O3')
+# heatmap('PM10')
+# heatmap('PM25')
 ```
 
 

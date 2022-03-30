@@ -34,7 +34,10 @@ read_perfm <- function(poll){
          list.files('data/workingData/', fname)
       }) %>% unlist()  %>% unique
    all_test <- lapply(paste0("data/workingData/", csv_names), read.csv)
-   all_test
+    ## Remove NA (For some folds in some months, there are NAs because of the error of 'error: inv(): matrix seems singular')
+   lapply(all_test, function(all_test_df){
+      all_test_df[!is.na(all_test_df$gwr),]
+   })
 }
 # Read 5-fold CV results of the annual model 
 read_perfm2 <- function(poll){
@@ -55,7 +58,7 @@ show_EM <- function(all_test, all_df_i, region=F, month=F){
    gwr=all_test[[all_df_i]]$gwr
    df_all <- data.frame(slr=error_matrix(all_test[[all_df_i]]$obs, slr),
                         gwr=error_matrix(all_test[[all_df_i]]$obs, gwr),
-                        rf=error_matrix(all_test[[all_df_i]]$obs, rf))[c(1,5,7,8),]
+                        rf=error_matrix(all_test[[all_df_i]]$obs, rf))[c(1,2,5,7,8),]
    df_all$EM = row.names(df_all)
    df_all$year = unique(all_test[[all_df_i]]$year)
    if(region&(!month)){
@@ -71,11 +74,14 @@ show_EM <- function(all_test, all_df_i, region=F, month=F){
                              nrow(all_test[[all_df_i]]))
    }
    if(month&region){
-      df_all$month <- paste0('m', unique(all_test[[all_df_i]]$month), 
+      # Performance matrix in each region in each month in each year
+      df_all$monthNo <- paste0('m', unique(all_test[[all_df_i]]$month), 
                              '_',
                              nrow(all_test[[all_df_i]]))
-          df_all$climate_zone <- unique(all_test[[all_df_i]]$climate_zone)
+      df_all$month <- unique(all_test[[all_df_i]]$month)
+      df_all$climate_zone <- unique(all_test[[all_df_i]]$climate_zone)
    }
+   
    df_all
 }
 comp_rf_slr <- function(csv_i, poll){
@@ -257,58 +263,422 @@ create_heatmap_monthly <- function(poll){
 ```
 ## Overall monthly 5-fold model performance
 
-```{r overall monthly performance (5-fold CV), eval=F, echo=F, fig.height=12, fig.width=8}
+```{r}
+# Model performance for each month and year
 overall_perfm <- function(target_poll){
    # Monthly models (built for each month)
    all_test_sep <- read_perfm(target_poll)
-   ## Remove NA (For some folds in some months, there are NAs because of the error of 'error: inv(): matrix seems singular')
-   all_test_sep <- lapply(all_test_sep, function(test_df){
-      test_df[!is.na(test_df$gwr),]
-   })
-   em_df1_sep <- lapply(seq_along(all_test_sep), show_EM, all_test=all_test_sep)
+   # em_df1_sep <- lapply(seq_along(all_test_sep), show_EM, all_test=all_test_sep)
    em_df1_sep <- lapply(all_test_sep, function(sep_df){
-      lapply(unique(sep_df$month), function(target_m){
-         show_EM(list(sep_df %>% filter(month==target_m)), 1, F, T)
+      if(target_poll=='PM2.5'){
+         df_all <- read.csv(paste0('data/raw/gee/pred_PM25_2010_monthly.csv')) %>% dplyr::select(zoneID, sta_code)
+      }else{
+         df_all <- read.csv(paste0('data/raw/gee/pred_', target_poll, '_2010_monthly.csv')) %>% dplyr::select(zoneID, sta_code)
+      }
+      df_all <- inner_join(df_all,
+                           read.csv('../EXPANSE_predictor/data/processed/climate_code.csv'),
+                           by='zoneID')
+      df_all <- df_all[!duplicated(df_all$sta_code),]
+      all_test2 <- inner_join(sep_df, df_all, by=c('sta_code'))
+      
+      lapply(unique(all_test2$month), function(target_m){
+         all_test3 <- all_test2 %>% filter(month==target_m)
+         lapply(unique(all_test3$climate_zone), function(target_climatezone){
+            show_EM(list(all_test3 %>% filter(climate_zone==target_climatezone)), 1, T, T)
+         }) %>% do.call(rbind, .)
       }) %>% do.call(rbind, .)
    }) %>% do.call(rbind, .)
    
    em_df <- em_df1_sep
-   em_df$month <- unlist(lapply(strsplit(em_df1_sep$month, '_'), '[[', 1)) %>% 
-      gsub('m','',.) %>% 
-      as.numeric()
-   em_df$count <- unlist(lapply(strsplit(em_df1_sep$month, '_'), '[[', 2)) %>% 
+   # em_df$month <- unlist(lapply(strsplit(em_df1_sep$month, '_'), '[[', 1)) %>% 
+   #    gsub('m','',.) %>% 
+   #    as.numeric()
+   em_df$count <- unlist(lapply(strsplit(em_df1_sep$monthNo, '_'), '[[', 2)) %>% 
       as.numeric()
    em_df$date <- as.Date(as.yearmon(paste0(em_df$year, '-', em_df$month)))
    em_df$poll <- target_poll
    em_df
+}
+show_EM_temp <- function(all_test, all_df_i, region=F, month=F){
+   slr=all_test[[all_df_i]]$slr
+   rf=all_test[[all_df_i]]$rf
+   gwr=all_test[[all_df_i]]$gwr
+   df_all <- data.frame(slr=error_matrix(all_test[[all_df_i]]$obs, slr),
+                        gwr=error_matrix(all_test[[all_df_i]]$obs, gwr),
+                        rf=error_matrix(all_test[[all_df_i]]$obs, rf))[c(1,2,5,7,8),]
+   df_all$EM = row.names(df_all)
+   df_all$month = unique(all_test[[all_df_i]]$month)
+   # if(region&(!month)){
+   #    df_all$climate_zone <- paste0(unique(all_test[[all_df_i]]$climate_zone), 
+   #                                  '_',
+   #                                  nrow(all_test[[all_df_i]]))
+   #       
+   #    
+   # }
+   # if(month&(!region)){
+   #    df_all$month <- paste0('m', unique(all_test[[all_df_i]]$month), 
+   #                           '_',
+   #                           nrow(all_test[[all_df_i]]))
+   # }
+   if(month&region){
+      # df_all$month <- paste0('m', unique(all_test[[all_df_i]]$month), 
+      #                        '_',
+      #                        nrow(all_test[[all_df_i]]))
+      df_all$climate_zone <- unique(all_test[[all_df_i]]$climate_zone)
+   }
+   df_all
+}
+# Long-term model performance for each month
+temp_perfm <- function(target_poll){
+   all_test_sep <- read_perfm(target_poll)
+   all_test_sep_df <- do.call(rbind, all_test_sep)
+   all_test_sep_m <- lapply(unique(all_test_sep_df$month), function(m_i){
+      all_test_sep_df %>% filter(month==m_i)
+   })
+   em_df1_sep <- lapply(seq_along(all_test_sep_m), show_EM_temp, 
+                        all_test=all_test_sep_m) %>% do.call(rbind, .)
+   
+   em_df <- em_df1_sep
+   em_df$poll <- target_poll
+   em_df
+   # Test
+   # table(all_test_sep_df$month)
+}
+read_dflist <- function(target_poll){
+   all_test <- read_perfm(target_poll)
+   all_test <- do.call(rbind, all_test)
+   all_test$poll <- target_poll
+   if(target_poll=='PM2.5'){
+      df_all <- read.csv(paste0('data/raw/gee/pred_PM25_2010_monthly.csv')) %>% dplyr::select(zoneID, sta_code)
+   }else{
+      df_all <- read.csv(paste0('data/raw/gee/pred_', target_poll, '_2010_monthly.csv')) %>% dplyr::select(zoneID, sta_code)
+   }
+   df_all <- inner_join(df_all,
+                        read.csv('../EXPANSE_predictor/data/processed/climate_code.csv'),
+                        by='zoneID')
+   df_all <- df_all[!duplicated(df_all$sta_code),]
+   all_test2 <- inner_join(all_test, df_all, by=c('sta_code'))
+   id_df <- expand.grid(month=unique(all_test2$month), climate_zone=unique(all_test2$climate_zone))
+   all_test3 <- lapply(1:nrow(id_df), function(i){
+      id=id_df[i, 'month']
+      climate_id=id_df[i, 'climate_zone']
+         all_test2 %>% filter(month==id, climate_zone==climate_id)
+   })
+   all_test3  # Return list
+}
+temp_region_perfm <- function(target_poll){
+   all_test3 <- read_dflist(target_poll)
+
+   em_df1 <- lapply(seq_along(all_test3), show_EM_temp, all_test=all_test3, region=T, month=T)
+   em_df1 <- do.call(rbind, em_df1)
+   # em_df1$poll <- target_poll
+   em_df1
+   
+   ## Test
+   # table(all_test2$month, all_test2$climate_zone)
+   # ggplot(all_test2 %>% filter(climate_zone%in%c( 'Alpine')))+  #Northern
+   #    geom_point(aes(x=gwr, y=obs))+
+   #    facet_wrap(month~climate_zone)+
+   #    geom_abline(slope=1, intercept = 0)
+}
+```
+
+```{r}
+plotM <- function(data_df, time_var, colorZone=T){
+   no2_2010_season <- data_df %>% 
+      group_by(.dots=list(as.symbol(time_var)), sta_code, climate_zone) %>% 
+      summarise(obs=mean(obs, na.rm = T))
+   no2_wide2 <- dcast(no2_2010_season[, c('sta_code', 'obs', 'climate_zone', time_var)],
+                      as.formula(paste0('sta_code+climate_zone~', time_var)), 
+                      value.var = 'obs')
+   
+   upper.panel <- function(x, y){
+      points(x, y,xlim=c(-2,220), ylim=c(-2,220), cex=1.4, cex.lab=1.5, cex.axis=0.75)
+      abline(0,1, col='red')
+   }
+   lowerFn <- function(data, mapping, ...) {
+      p <- ggplot(data = data, mapping = mapping) +
+         geom_point(colour = "black") +
+         geom_abline(intercept=0, slope=1, col='red')+
+         lims(x=c(-2, 150),y=c(-2, 150))
+      p
+   }
+   if(colorZone){
+      ggpairs(data=no2_wide2[,-1], lower = list(continuous = wrap(lowerFn, size=9)), upper = list(continuous = wrap("cor", size=7)),
+           diag=list(discrete="barDiag", 
+                     continuous = wrap("densityDiag", alpha=0.5)),
+           mapping=ggplot2::aes(colour=climate_zone))+
+         ggplot2::theme(strip.text=element_text(size=18),
+               axis.text=element_text(size=16))
+   }else{
+      ggpairs(data=no2_wide2[,-1], lower = list(continuous = wrap(lowerFn, size=9)),upper = list(continuous = wrap("cor", size=7)),
+           diag=list(discrete="barDiag", 
+                     continuous = wrap("densityDiag", alpha=0.5)))+
+         ggplot2::theme(strip.text=element_text(size=18),
+               axis.text=element_text(size=16))
+   }
    
 }
+
+read_temp_region_df <- function(target_poll){
+   all_test <- read_perfm(target_poll)
+   all_test <- do.call(rbind, all_test)
+   if(target_poll=='PM2.5'){
+      df_all <- read.csv(paste0('data/raw/gee/pred_PM25_2010_monthly.csv')) %>% dplyr::select(zoneID, sta_code)
+   }else{
+      df_all <- read.csv(paste0('data/raw/gee/pred_', target_poll, '_2010_monthly.csv')) %>% dplyr::select(zoneID, sta_code)
+   }
+   df_all <- inner_join(df_all,
+                        read.csv('../EXPANSE_predictor/data/processed/climate_code.csv'),
+                        by='zoneID')
+   df_all <- df_all[!duplicated(df_all$sta_code),]
+   all_test2 <- inner_join(all_test, df_all, by=c('sta_code'))
+   all_test2 <- all_test2 %>% 
+      mutate(season=case_when(month%in%(3:5)~'spring',
+                              month%in%(6:8)~'summer',
+                              month%in%(9:11)~'fall',
+                              month%in%c(12,1:2)~'winter'),
+             mc=ifelse(month%in%(4:9), 'warm', 'cold'))
+   plotM(all_test2, 'season')
+   # id_df <- expand.grid(month=unique(all_test2$month), climate_zone=unique(all_test2$climate_zone))
+   # all_test3 <- lapply(1:nrow(id_df), function(i){
+   #    id=id_df[i, 'month']
+   #    climate_id=id_df[i, 'climate_zone']
+   #    all_test2 %>% filter(month==id, climate_zone==climate_id)
+   # })
+   all_test3
+}
+```
+
+
+```{r}
 em_df <- lapply(c('NO2','O3','PM10','PM2.5'), overall_perfm) %>% do.call(rbind,.)
+em_temp_df <- lapply(c('NO2','O3','PM10','PM2.5'), temp_perfm) %>% do.call(rbind,.)
+em_temp_region_df <- lapply(c('NO2','O3','PM10','PM2.5'), temp_region_perfm) %>% do.call(rbind,.)
+```
+
+
+The long-term monthly model performance (the out-fold validation data in the same month and region):
+
+```{r}
+
+ggplot(em_temp_region_df %>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM", 'month', 'poll', 'climate_zone')) %>% filter(model=='gwr'), 
+          aes(x=factor(month), y=values,  group=poll))+ ##col=model,
+      geom_line()+
+      geom_point()+
+      labs(y="R squared", x='month')+
+      theme(axis.title = element_text(size = 18),
+            axis.text = element_text(size = 16),
+            legend.title = element_text(size = 16),
+            legend.text = element_text(size = 16),
+            strip.text.y = element_text(size = 15))+
+      facet_grid(climate_zone~poll, scales ='fixed')+  #model
+      theme_bw()+
+      # scale_x_date(date_breaks = "1 month",
+      #              date_labels = "%m")+
+      theme(panel.grid.minor.x=element_line(colour='grey50'),
+            axis.text.x = element_text(angle=0)
+            )
+ggsave('results/figures/monthly_long_perfm_region.png', height=6, width=7.5, units='in',dpi=300)
+
+```
+
+The long-term monthly model performance (the out-fold validation data in the same month):
+
+```{r}
+
+ggplot(em_temp_df %>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM", 'month', 'poll')) %>% filter(model=='gwr'), 
+          aes(x=factor(month), y=values,  group=poll))+ ##col=model,
+      geom_line()+
+      geom_point()+
+      labs(y="R squared", x='month')+
+      theme(axis.title = element_text(size = 18),
+            axis.text = element_text(size = 16),
+            legend.title = element_text(size = 16),
+            legend.text = element_text(size = 16),
+            strip.text.y = element_text(size = 15))+
+      facet_grid(.~poll, scales ='free')+  #model
+      theme_bw()+
+      # scale_x_date(date_breaks = "1 month",
+      #              date_labels = "%m")+
+      theme(panel.grid.minor.x=element_line(colour='grey50'),
+            axis.text.x = element_text(angle=0)
+            )
+ggsave('results/figures/monthly_long_perfm.png', height=3.3, width=6.4, units='in',dpi=300)
+```
+
+Why the R2 values are different in months?
+For PM2.5 and PM10, it could be indeed because of the low spatial variations in the observations (narrow range of IQR, interquartile range: the range for the middle 50% of the data). But this is not necessarily the reason of the low R2 values in some specific months. And if we look at the boxplot of R2 values in each month and region (over time), you can see that it's not just some outliers making the overall R2 values to fluctuate. Instead the mean and median of the R2 values also fluctuate.. So the monthly-varying R2 values could also be because the predictors were not enough to capture the spatial variations in those months and regions.
+
+
+The percentage of the monthly observations that only exist in the monthly model:
+```{r}
+apm_all_by_regionAndmonth <- lapply(c('NO2','O3','PM10','PM2.5'), read_dflist) %>% do.call(rbind,.)
+apm_all_by_regionAndmonth <- do.call(rbind, apm_all_by_regionAndmonth)
+table(apm_all_by_regionAndmonth$year, apm_all_by_regionAndmonth$month, apm_all_by_regionAndmonth$poll)
+sta_monthlyonly <- apm_all_by_regionAndmonth %>% group_by(sta_code, year, poll) %>% count(sta_code) %>% filter(n<9) 
+sta_annual <- apm_all_by_regionAndmonth %>% group_by(sta_code, year, poll) %>% count(sta_code) %>% filter(n>=9) 
+# table(sta_monthlyonly$year, sta_monthlyonly$poll)
+# table(sta_annual$year, sta_annual$poll)
+table(sta_monthlyonly$year, sta_monthlyonly$poll)/(table(sta_annual$year, sta_annual$poll)+table(sta_monthlyonly$year, sta_monthlyonly$poll))*100
+```
+
+
+```{r}
+ggplot(apm_all_by_regionAndmonth, aes(x=month, y=obs))+
+   geom_boxplot(aes(group=month))+
+   facet_grid(climate_zone~poll, scales = 'free_y')
+```
+
+```{r}
+apm_all_by_iqr <- apm_all_by_regionAndmonth %>% 
+   group_by(climate_zone, month, poll) %>% 
+   summarise(iqr=IQR(obs))
+   
+ggplot(apm_all_by_iqr, aes(x=factor(month), y=iqr))+
+   geom_point()+
+   geom_line()+
+   facet_grid(climate_zone~poll, scales = 'fixed')
+```
+
+
+
+```{r overall monthly performance (5-fold CV), eval=F, echo=F, fig.height=12, fig.width=8}
 # Overall
 # GWR predictions have missing values
 # dat_test <- em_df %>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM", 'year','month', 'count', 'date', 'poll'))
 # dat_test[(is.na(dat_test$values)),] %>% nrow
-ggplot(em_df %>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM", 'year','month', 'count', 'date', 'poll')), 
-          aes(x=date, y=values, col=model))+
-      geom_line()+
-      geom_point()+
+ggplot(em_df %>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM", 'year','month', 'monthNo', 'count', 'date', 'poll', 'climate_zone')) %>% filter(model=='gwr'), 
+          aes(x=factor(month), y=values,  group=factor(month)))+
+   geom_boxplot()+
+      # geom_line()+
+      # geom_point()+
       labs(y="R squared")+
       theme(axis.title = element_text(size = 18),
             axis.text = element_text(size = 16),
             legend.title = element_text(size = 16),
             legend.text = element_text(size = 16),
             strip.text.y = element_text(size = 15))+
-      facet_grid(model~poll, scales ='fixed')+
+      facet_grid(climate_zone~poll, scales ='fixed')+
       theme_bw()+
-      scale_x_date(date_breaks = "1 year",
-                   date_labels = "%Y",
-                   date_minor_breaks = "6 months")+
+      # scale_x_date(date_breaks = "1 year",
+      #              date_labels = "%Y",
+      #              date_minor_breaks = "6 months")+
       theme(panel.grid.minor.x=element_line(colour='grey50'),
-            axis.text.x = element_text(angle=90)
+            axis.text.x = element_text(angle=0)
+            )
+ggsave('results/figures/monthly_perfm_boxplot.png', height=7.5, width=10, units='in',dpi=100)
+```
+
+
+```{r, eval=F, echo=F, fig.height=12, fig.width=8}
+# How count might influence such performance variation
+ggplot(em_df %>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM", 'year','month', 'monthNo', 'count', 'date', 'poll', 'climate_zone')) %>% filter(model=='gwr'), 
+          aes(x=factor(month), y=count,  group=factor(month)))+
+   geom_boxplot()+
+      # geom_line()+
+      # geom_point()+
+      labs(y="R squared")+
+      theme(axis.title = element_text(size = 18),
+            axis.text = element_text(size = 16),
+            legend.title = element_text(size = 16),
+            legend.text = element_text(size = 16),
+            strip.text.y = element_text(size = 15))+
+      facet_grid(climate_zone~poll, scales ='fixed')+
+      theme_bw()+
+      # scale_x_date(date_breaks = "1 year",
+      #              date_labels = "%Y",
+      #              date_minor_breaks = "6 months")+
+      theme(panel.grid.minor.x=element_line(colour='grey50'),
+            axis.text.x = element_text(angle=0)
             )
 
+## Is it better to combine data points in Northern and Alpine when calculateing the R2?
+```
 
-ggsave('results/figures/monthly_perfm.png', height=5.5, width=15, units='in',dpi=100)
+## Boxplot of the R2 values
+
+```{r boxplot of the R2 values}
+em_df%>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM", 'year','month', 'count', 'date', 'poll'))
+
+ggplot(em_df%>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM", 'year','month', 'count', 'date', 'poll')) %>% filter(model=='gwr'))+
+   geom_boxplot(aes(x=as.factor(month),y=values,group=month))+
+   facet_grid(poll~.)+
+   labs(x='month', y='R squared')+
+   theme(axis.title = element_text(size = 18),
+         axis.text = element_text(size = 16),
+         legend.title = element_text(size = 16),
+         legend.text = element_text(size = 16),
+         strip.text = element_text(size = 15))
+
+ggsave('results/figures/boxplot_R2_monthly.tiff', height=6, width=6.5, units='in',dpi=300)
+
+```
+
+why the monthly R2 values are quite different between years? Well i think it's just merely because the scale of the observations changed and thus the R2 changed. When we used RRMSE as a performance evaluation matrix, the seasonal variations in the model performance were gone: 
+
+```{r}
+em_df%>% filter(EM=='RRMSE') %>%  gather("model", "values", -c("EM", 'year','month', 'count', 'date', 'poll'))
+
+ggplot(em_df%>% filter(EM=='RRMSE') %>%  gather("model", "values", -c("EM", 'year','month', 'count', 'date', 'poll')) %>% filter(model=='gwr'))+
+   geom_boxplot(aes(x=as.factor(month),y=values,group=month))+
+   facet_grid(poll~.)+
+   labs(x='month', y='RRMSE')+
+   theme(axis.title = element_text(size = 18),
+         axis.text = element_text(size = 16),
+         legend.title = element_text(size = 16),
+         legend.text = element_text(size = 16),
+         strip.text = element_text(size = 15))
+```
+
+
+## Boxplot of the observations
+```{r}
+all_test_sep <- lapply(c("NO2", "O3", "PM10", "PM2.5"),
+                       function(target_poll){
+                          all_test_sep <- read_perfm(target_poll)
+                          all_test_sep <- do.call(rbind, all_test_sep)
+                          all_test_sep %>% mutate(poll=target_poll)
+                       })
+all_test_sep <- do.call(rbind, all_test_sep)
+ggplot(all_test_sep)+
+   geom_boxplot(aes(x=as.factor(month), y=obs, group=month))+
+      facet_grid(poll~.)+
+   labs(x='month', y='R squared')+
+   theme(axis.title = element_text(size = 18),
+         axis.text = element_text(size = 16),
+         legend.title = element_text(size = 16),
+         legend.text = element_text(size = 16),
+         strip.text = element_text(size = 15))
+ggsave('results/figures/boxplot_obs_monthly.tiff', height=6, width=6.5, units='in',dpi=300)
+```
+
+
+
+The number of observations is quite stable over a year:
+```{r}
+freq <- as.data.frame(table(all_test_sep$month, all_test_sep$poll, all_test_sep$year)) %>% 
+   rename(month=Var1, poll=Var2, year=Var3, count=Freq)
+ggplot(freq)+
+   geom_line(aes(x=month, y=count, col=year,group=year))+
+   facet_grid(poll~., scales = 'free_y')
+   
+```
+
+```{r}
+ggplot(all_test_sep)+
+   geom_point(aes(x=gwr, y=obs))+
+   facet_grid(poll~month)+
+   lims(y=c(0,400), x=c(0,400))+
+   geom_abline(slope = 1, intercept = 0)
+ggsave('results/figures/scatterplot_monthly.tiff', height=6, width=15, units='in',dpi=100)
+
+ggplot(all_test_sep)+
+   geom_point(aes(x=gwr, y=obs))+
+   facet_grid(poll~month, scales = 'free')+
+   # lims(y=c(0,400), x=c(0,400))+
+   geom_abline(slope = 1, intercept = 0)
+ggsave('results/figures/scatterplot_monthly_free.tiff', height=6, width=15, units='in',dpi=100)
 ```
 
 
@@ -369,31 +739,28 @@ annual_perf <- function(target_poll){
    em_all
 }
 em_all <- lapply(c('NO2', 'O3', 'PM10', 'PM2.5'), annual_perf) %>% do.call(rbind,.)
-# NAs in the gwr predictions:
-# em_all[is.na(em_all$gwr), ]
-# Aggregate the predictions into annual scale
+
 ```
 
 
 ```{r aggregated annual performance (5-fold CV) R2}
-ggplot(em_all %>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM", 'config', 'year', 'poll', 'date')), 
+ggplot(em_all %>% filter(EM=='rsq') %>%  gather("model", "values", -c("EM", 'config', 'year', 'poll', 'date')) %>% filter(model=='gwr'), 
           aes(x=date, y=values, col=config))+
    geom_point()+
    geom_line()+
-   facet_grid(model~poll, scales ='free')+
+   facet_grid(.~poll, scales ='free')+
    theme_bw()+
    scale_x_date(#date_breaks = "3 year",
                 date_labels = "%Y")+
-   labs(y="R squared", col='')+
+   labs(y="R squared", col='', x='year')+
    theme(axis.title = element_text(size = 18),
          axis.text = element_text(size = 16),
          legend.title = element_text(size = 16),
          legend.text = element_text(size = 16),
-         strip.text.y = element_text(size = 15),
-         strip.text.x = element_text(size = 15),
+         strip.text = element_text(size = 15),
          panel.grid.minor.x=element_line(colour='grey50'),
          axis.text.x = element_text(angle=90))
-ggsave('results/figures/monthly_annual_perfm.png', height=5.5, width=10, units='in',dpi=300)
+ggsave('results/figures/monthly_annual_perfm.tiff', height=3, width=7, units='in',dpi=300)
 ```
 
 ```{r}

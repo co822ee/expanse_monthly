@@ -3,7 +3,7 @@ library(foreach)
 cluster_no <- detectCores()
 cl <- parallel::makeCluster(cluster_no)
 doParallel::registerDoParallel(cl)
-foreach(target_yr=2000:2018)%dopar%{
+foreach(target_yr=2000:2019)%dopar%{
    source("../EXPANSE_algorithm/scr/fun_call_lib.R")
    source("src/00_fun_read_monthly_data_gee.R")
    # Whether to tune RF

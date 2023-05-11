@@ -1,5 +1,5 @@
 seed <- 123
-local_crs <- CRS("+init=EPSG:3035")
+local_crs <- CRS("EPSG:3035")
 # target_poll = 'NO2'
 eu_bnd <- st_read("../expanse_shp/eu_expanse2.shp")
 read_data <- function(target_poll, yr){

@@ -7,12 +7,12 @@ library(foreach)
 cluster_no <- detectCores()
 cl <- parallel::makeCluster(cluster_no)
 doParallel::registerDoParallel(cl)
-foreach(fold_i=1:nfold)%dopar%{
+foreach(target_yr=2000:2019)%dopar%{
    tuneRF_b = T
    source("../EXPANSE_algorithm/scr/fun_call_lib.R")
    source("src/00_fun_read_monthly_data_gee.R")
    source("../expanse_multiyear/src/00_fun_create_fold.R")
-   for(target_yr in 2000:2019){
+   for(fold_i in 1:nfold){
       for(target_poll in c('NO2', 'O3', 'PM10', 'PM2.5')){  #
          csv_name <- paste0('monthly_', target_yr,'_sep_', target_poll)  
          print("********************************************")
@@ -24,7 +24,7 @@ foreach(fold_i=1:nfold)%dopar%{
          names(df_sub)[names(df_sub)%in%c('ugr','tbu','res','nat','por','ind')] <- paste0(names(df_sub)[names(df_sub)%in%c('ugr','tbu','res','nat','por','ind')], '_2000')
          exc_names <- c('system.index', 'obs', 'sta_code', 'component_caption', '.geo', 
                         'year', 'date', 'month', ## exclude month first
-                        'cntr_code', 'xcoord', 'ycoord', 'sta_type', 'valid', 'time_type')
+                        'cntr_code', 'xcoord', 'ycoord', 'sta_type', 'valid', 'time_type', 'long', 'lat', 'zoneID')
          pred_c <- names(df_sub)[!(names(df_sub)%in%exc_names)]
          
          if(nrow(df_sub)>200&any(table(df_sub$month)>200)){
@@ -116,7 +116,7 @@ foreach(fold_i=1:nfold)%dopar%{
                   
                }
                rf_models <- lapply(1:12, tuneRF_month, train_df=train_sub, test_df=test_sub,
-                                   csv_name=csv_name_fold, x_varname=pred_c)
+                                   csv_name=csv_name_fold, x_varname=c(pred_c, 'zoneID'))
                source('src/fun_output_rf.R')
                lapply(seq_along(rf_models), function(model_i){
                   sub_month <- model_i

@@ -6,7 +6,7 @@ library(foreach)
 cluster_no <- detectCores()
 cl <- parallel::makeCluster(cluster_no)
 doParallel::registerDoParallel(cl)
-foreach(fold_i=1:nfold)%dopar%{
+foreach(target_yr=2000:2019)%dopar%{
    tuneRF_b = T
    source("../EXPANSE_algorithm/scr/fun_call_lib.R")
    source("src/00_fun_read_monthly_data_gee.R")
@@ -15,7 +15,7 @@ foreach(fold_i=1:nfold)%dopar%{
    source("../EXPANSE_algorithm/scr/fun_calibr_gwr.R")
    source("../EXPANSE_algorithm/scr/fun_gwr.R")
    source("../EXPANSE_algorithm/scr/fun_output_gwr_result.R")
-   for(target_yr in 2000:2019){
+   for(fold_i in 1:nfold){
       for(target_poll in c('NO2', 'O3', 'PM10', 'PM2.5')){  #
          csv_name <- paste0('monthly_', target_yr,'_sep_', target_poll)  
          print("********************************************")
@@ -28,20 +28,10 @@ foreach(fold_i=1:nfold)%dopar%{
          
          exc_names <- c('system.index', 'obs', 'sta_code', 'component_caption', '.geo', 
                         'year', 'date', 'month', ## exclude month first
-                        'cntr_code', 'xcoord', 'ycoord', 'sta_type', 'valid', 'time_type')
+                        'cntr_code', 'xcoord', 'ycoord', 'sta_type', 'valid', 'time_type', 'long', 'lat', 'zoneID')
          pred_c <- names(df_sub)[!(names(df_sub)%in%exc_names)]
          
          if(nrow(df_sub)>200&any(table(df_sub$month)>200)){
-            
-            # clusterExport(cl, "csv_names", envir = .GlobalEnv)
-            # clusterExport(cl, "nfold", envir = .GlobalEnv)
-            # clusterExport(cl, "years", envir = .GlobalEnv)
-            # clusterExport(cl, "yr_i", envir = .GlobalEnv)
-            
-            
-            # data_all <- create_fold(df_sub, seed, strt_group=c("sta_type", "zoneID"), 
-            #                         nfold = nfold)
-            
             data_all <- create_fold(df_sub, seed, strt_group=c("n_obs", "sta_type", "zoneID"), 
                                     multiyear_group = c("sta_code", "month"),
                                     nfold = 5, m_var='month')

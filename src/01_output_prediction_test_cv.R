@@ -1,16 +1,16 @@
 source("../EXPANSE_algorithm/scr/fun_call_lib.R")
 target_poll = c('PM2.5', 'PM10', 'NO2', 'O3')
-csv_names <- lapply(paste0('SLR_result_all_monthly_',2000:2018,'_'), function(fname){
+csv_names <- lapply(paste0('SLR_result_all_monthly_',2000:2019,'_'), function(fname){
    list.files('data/workingData/', fname)
 }) %>% unlist() %>% 
    gsub('SLR_result_all_', '', .) %>% 
    strsplit(., '_fold_') %>% lapply(., `[[`, 1) %>% unlist() %>% unique
-csvnamesRF <- lapply(paste0('RF_result_all_monthly_',2000:2018,'_'), function(fname){
+csvnamesRF <- lapply(paste0('RF_result_all_monthly_',2000:2019,'_'), function(fname){
    list.files('data/workingData/', fname)
 }) %>% unlist() %>% 
    gsub('RF_result_all_', '', .) %>% 
    strsplit(., '_fold_') %>% lapply(., `[[`, 1) %>% unlist() %>% unique
-csvnamesGWR <- lapply(paste0('GWR_result_all_monthly_',2000:2018,'_'), function(fname){
+csvnamesGWR <- lapply(paste0('GWR_result_all_monthly_',2000:2019,'_'), function(fname){
    list.files('data/workingData/', fname)
 }) %>% unlist() %>% 
    gsub('GWR_result_all_', '', .) %>% 
